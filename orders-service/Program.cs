@@ -1,11 +1,17 @@
 using DotNetEnv;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using orders_service.Src.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 Env.Load();
 
 var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING");
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 4, 6)))
+);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(option =>
