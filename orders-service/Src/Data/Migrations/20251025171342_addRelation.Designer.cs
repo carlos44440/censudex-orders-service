@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using orders_service.Src.Data;
 
@@ -11,9 +12,11 @@ using orders_service.Src.Data;
 namespace orders_service.Src.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251025171342_addRelation")]
+    partial class addRelation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -60,10 +63,6 @@ namespace orders_service.Src.Data.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
-                    b.Property<string>("OrderId")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
-
                     b.Property<string>("ProductId")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -81,22 +80,26 @@ namespace orders_service.Src.Data.Migrations
                     b.Property<int>("UnitPrice")
                         .HasColumnType("int");
 
+                    b.Property<string>("orderId")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("orderId");
 
                     b.ToTable("OrderItems");
                 });
 
             modelBuilder.Entity("orders_service.Src.Models.OrderItem", b =>
                 {
-                    b.HasOne("orders_service.Src.Models.Order", "Order")
+                    b.HasOne("orders_service.Src.Models.Order", "order")
                         .WithMany("Items")
-                        .HasForeignKey("OrderId")
+                        .HasForeignKey("orderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Order");
+                    b.Navigation("order");
                 });
 
             modelBuilder.Entity("orders_service.Src.Models.Order", b =>

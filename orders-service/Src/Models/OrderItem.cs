@@ -7,6 +7,8 @@ namespace orders_service.Src.Models
         public string ProductName { get; set; } = string.Empty;
         public int Quantity { get; set; }
         public int UnitPrice { get; set; }
-        public int SubTotal => UnitPrice * Quantity;
+        public int SubTotal { get; set; }
+        public string OrderId { get; set; } = string.Empty;
+        public Order? Order { get; set; }
     }
 }
