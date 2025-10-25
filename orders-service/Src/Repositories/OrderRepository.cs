@@ -7,7 +7,7 @@ namespace orders_service.Src.Repositories
 {
     public class OrderRepository : IOrderRepository
     {
-        public Task<Order?> createOrder(CreateOrderDto createOrderDto)
+        public async Task<Order?> createOrder(List<OrderItemDto> orderItemsDtos, string customerId)
         {
             throw new NotImplementedException();
         }
@@ -17,17 +17,17 @@ namespace orders_service.Src.Repositories
             throw new NotImplementedException();
         }
 
-        public Task<Order?> updateOrderStatus(string orderId, string status)
+        public Task<OrderDto?> updateOrderStatus(string orderId, string status)
         {
             throw new NotImplementedException();
         }
 
-        public Task<Order?> cancelOrder(string orderId, string? cancellationReason)
+        public Task<OrderDto?> cancelOrder(string orderId, string? cancellationReason)
         {
             throw new NotImplementedException();
         }
 
-        public Task<List<Order>?> getOrders(QueryObjectOrder queryObject)
+        public Task<List<OrderDto>?> getOrders(QueryObjectOrder queryObject)
         {
             throw new NotImplementedException();
         }

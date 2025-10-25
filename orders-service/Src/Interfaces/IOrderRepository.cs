@@ -6,10 +6,10 @@ namespace orders_service.Src.Interfaces
 {
     public interface IOrderRepository
     {
-        Task<Order?> createOrder(CreateOrderDto createOrderDto);
+        Task<Order?> createOrder(List<OrderItemDto> orderItemsDtos, string customerId);
         Task<List<CheckOrderStatusDto>?> checkOrderStatus(string Id);
         Task<Order?> updateOrderStatus(string orderId, string status);
         Task<Order?> cancelOrder(string orderId, string? cancellationReason);
-        Task<List<Order>?> getOrders(QueryObjectOrder queryObject);
+        Task<List<OrderDto>?> getOrders(QueryObjectOrder queryObject);
     }
 }
