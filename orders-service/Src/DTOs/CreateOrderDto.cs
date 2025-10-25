@@ -2,7 +2,7 @@ namespace orders_service.Src.DTOs
 {
     public class CreateOrderDto
     {
-        public string ProductId { get; set; } = string.Empty;
-        public int Quantity { get; set; }
+        public string CustomerId { get; set; } = string.Empty;
+        public List<OrderItemDto> ItemDtos { get; set; } = new List<OrderItemDto>();
     }
 }
