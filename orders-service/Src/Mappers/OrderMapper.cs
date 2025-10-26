@@ -5,7 +5,7 @@ namespace orders_service.Src.Mappers
 {
     public static class OrderMapper
     {
-        public static OrderItem ToOrderItemFromDto(OrderItemDto orderItemDto)
+        public static OrderItem ToOrderItemFromDto(this OrderItemDto orderItemDto)
         {
             return new OrderItem
             {
@@ -19,7 +19,7 @@ namespace orders_service.Src.Mappers
             };
         }
 
-        public static OrderItemDto ToDtoFromOrderItem(OrderItem orderItem)
+        public static OrderItemDto ToDtoFromOrderItem(this OrderItem orderItem)
         {
             return new OrderItemDto
             {
@@ -31,7 +31,7 @@ namespace orders_service.Src.Mappers
             };
         }
 
-        public static OrderDto ToDtoFromOrder(Order order)
+        public static OrderDto ToDtoFromOrder(this Order order)
         {
             return new OrderDto
             {
