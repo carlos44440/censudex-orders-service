@@ -23,7 +23,7 @@ namespace orders_service.Src.Repositories
             _productClient = new Product.ProductClient(channel);
         }
 
-        public async Task<OrderDto?> CreateOrder(List<CreateOrderItemDto> createOrderItemsDtos, string userId)
+        public async Task<OrderDto> CreateOrder(List<CreateOrderItemDto> createOrderItemsDtos, string userId)
         {
             //Validacion: El pedido no puede tener dos productos duplicados
             if (createOrderItemsDtos.Select(i => i.ProductId).Distinct().Count() != createOrderItemsDtos.Count())
@@ -77,7 +77,7 @@ namespace orders_service.Src.Repositories
             return order.ToDtoFromOrder();
         }
 
-        public async Task<string?> CheckOrderStatus(string customerId, string orderId)
+        public async Task<string> CheckOrderStatus(string customerId, string orderId)
         {
             var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
 
@@ -87,7 +87,7 @@ namespace orders_service.Src.Repositories
             return order.Status;
         }
 
-        public async Task<OrderDto?> UpdateOrderStatus(string orderId, string status)
+        public async Task<OrderDto> UpdateOrderStatus(string orderId, string status)
         {
             var order = await _context.Orders.FindAsync(orderId);
 
@@ -110,7 +110,7 @@ namespace orders_service.Src.Repositories
             return order.ToDtoFromOrder();
         }
 
-        public async Task<OrderDto?> CancelOrder(RequestCancelOrderDto request)
+        public async Task<OrderDto> CancelOrder(RequestCancelOrderDto request)
         {
             if (request.UserRole == "Admin")
             {
@@ -169,7 +169,7 @@ namespace orders_service.Src.Repositories
             }
         }
 
-        public async Task<List<OrderDto>?> GetOrders(string userId, string userRole, QueryObjectOrder queryObject)
+        public async Task<List<OrderDto>> GetOrders(string userId, string userRole, QueryObjectOrder queryObject)
         {
             var orders = _context.Orders.Include(o => o.Items).AsQueryable();
 

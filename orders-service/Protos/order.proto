@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+option csharp_namespace = "OrderService";
+
+package order;
+
+service Order {
+  rpc CreateOrder (CreateOrderRequest) returns (OrderResponse);
+  rpc CheckOrderStatus (CheckOrderStatusRequest) returns (OrderStatusResponse);
+  rpc UpdateOrderStatus (UpdateOrderStatusRequest) returns (OrderResponse);
+  rpc CancelOrder (CancelOrderRequest) returns (OrderResponse);
+  rpc GetOrders (GetOrdersRequest) returns (GetOrdersResponse);
+}
+
+// Create Order
+message CreateOrderItem {
+  string productId = 1;
+  int32 quantity = 2;
+}
+
+message CreateOrderRequest {
+  string userId = 1;
+  repeated CreateOrderItem items = 2;
+}
+
+message OrderResponse {
+  string id = 1;
+  string orderDate = 2;
+  string userId = 3;
+  repeated OrderItem items = 4;
+  string status = 5;
+  double totalAmount = 6;
+  string trackingNumber = 7;
+  string deliveryDate = 8;
+  string cancellationReason = 9;
+}
+
+message OrderItem {
+  string productId = 1;
+  string productName = 2;
+  int32 quantity = 3;
+  double unitPrice = 4;
+  double subTotal = 5;
+}
+
+// Check Order Status
+message CheckOrderStatusRequest {
+  string orderId = 1;
+  string customerId = 2;
+}
+
+message OrderStatusResponse {
+  string status = 2;
+}
+
+// Update Order Status
+message UpdateOrderStatusRequest {
+  string orderId = 1;
+  string status = 2;
+}
+
+// Cancel Order
+message CancelOrderRequest{
+  string userId = 1;
+  string userRole = 2;
+  string orderId = 3;
+  string cancellationReason = 4;
+}
+
+// Get Order
+message GetOrdersRequest{
+  string userId = 1;
+  string userRole = 2;
+  QueryObjectOrder queryObject = 3;
+}
+
+message QueryObjectOrder{
+  string orderId = 1;
+  string customerId = 2;
+  string initialOrderDate = 3;
+  string finalOrderDate = 4;
+}
+
+message GetOrdersResponse{
+  repeated OrderResponse orderDto = 1;
+}
