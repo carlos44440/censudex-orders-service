@@ -6,7 +6,7 @@ namespace orders_service.Src.DTOs
     {
         public string Id { get; set; } = string.Empty;
         public DateTime OrderDate { get; set; }
-        public string CustomerId { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
         public List<OrderItemDto> Items { get; set; } = new List<OrderItemDto>();
         public string Status { get; set; } = string.Empty;
         public decimal TotalAmount { get; set; }

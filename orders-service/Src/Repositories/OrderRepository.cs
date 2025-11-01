@@ -1,3 +1,7 @@
+using Grpc.Net.Client;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Identity;
+using ProductService;
 using Microsoft.EntityFrameworkCore;
 using orders_service.Src.Data;
 using orders_service.Src.DTOs;
@@ -11,21 +15,58 @@ namespace orders_service.Src.Repositories
     public class OrderRepository : IOrderRepository
     {
         private readonly AppDbContext _context;
+        private readonly Product.ProductClient _productClient;
         public OrderRepository(AppDbContext context)
         {
             _context = context;
+            var channel = GrpcChannel.ForAddress("http://localhost:5001");
+            _productClient = new Product.ProductClient(channel);
         }
 
-        public async Task<OrderDto?> CreateOrder(List<OrderItemDto> orderItemsDtos, string customerId)
+        public async Task<OrderDto?> CreateOrder(List<CreateOrderItemDto> createOrderItemsDtos, string userId)
         {
+            //Validacion: El pedido no puede tener dos productos duplicados
+            if (createOrderItemsDtos.Select(i => i.ProductId).Distinct().Count() != createOrderItemsDtos.Count())
+            {
+                throw new Exception("El pedido tiene dos productos duplicados");
+            }
+
+            var items = new List<OrderItem>();
+
+            foreach (var itemDto in createOrderItemsDtos)
+            {
+                //Validacion: La cantidad del producto debe ser mayor a 0
+                if (itemDto.Quantity <= 0) throw new Exception("La cantidad debe ser mayor a 0");
+
+                var response = _productClient.GetProductById(new GetProductRequest { Id = itemDto.ProductId });
+
+                //Validacion: El producto debe existir
+                if (response == null) throw new Exception($"El producto con la Id {itemDto.ProductId} no existe");
+
+                //Validacion: El precio no puede ser menor o igual a 0
+                if (response.Price <= 0) throw new Exception("El precio del producto no es valido");
+                
+                var orderItem = new OrderItem
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    ProductId = itemDto.ProductId,
+                    ProductName = response.Name,
+                    Quantity = itemDto.Quantity,
+                    UnitPrice = (int)response.Price,
+                    SubTotal = (int)response.Price * itemDto.Quantity
+                };
+
+                items.Add(orderItem);
+            }
+
             var order = new Order
             {
                 Id = Guid.NewGuid().ToString(),
                 OrderDate = DateTime.UtcNow,
-                CustomerId = customerId,
-                Items = orderItemsDtos.Select(item => item.ToOrderItemFromDto()).ToList(),
+                UserId = userId,
+                Items = items,
                 Status = "pendiente",
-                TotalAmount = orderItemsDtos.Sum(item => item.SubTotal),
+                TotalAmount = items.Sum(item => item.SubTotal),
                 TrackingNumber = GenerateNumber.GenerateTrackingNumber(),
                 DeliveryDate = DateTime.UtcNow.AddDays(30),
                 CancellationReason = null
@@ -36,41 +77,14 @@ namespace orders_service.Src.Repositories
             return order.ToDtoFromOrder();
         }
 
-        public async Task<List<CheckOrderStatusDto>?> CheckOrderStatus(string customerId, string? orderId)
+        public async Task<string?> CheckOrderStatus(string customerId, string orderId)
         {
-            var orders = _context.Orders.Where(o => o.CustomerId == customerId).AsQueryable();
-            
-            //Validacion: El usuario no tiene pedidos
-            if (orders == null || !orders.Any())
-            {
-                throw new Exception("El usuario no tiene ningun pedido");
-            }
+            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
 
-            if (orderId != null)
-            {
-                var order = orders.Where(o => o.Id == orderId).ElementAt(0);
-                var orderStatusDto = new CheckOrderStatusDto
-                {
-                    OrderId = order.Id,
-                    Status = order.Status
-                };
-                List<CheckOrderStatusDto> orderStatusDtos = new List<CheckOrderStatusDto> { orderStatusDto };
-                return orderStatusDtos;
-            }
-            else
-            {
-                List<CheckOrderStatusDto> orderStatusDtos = new List<CheckOrderStatusDto>();
-                foreach (var x in orders)
-                {
-                    CheckOrderStatusDto orderStatusDto = new CheckOrderStatusDto
-                    {
-                        OrderId = x.Id,
-                        Status = x.Status
-                    };
-                    orderStatusDtos.Add(orderStatusDto);
-                }
-                return orderStatusDtos;
-            }
+            //Validacion: No existe un pedido con el id entregado
+            if (order == null) throw new Exception("La Id del pedido no corresponde a ningun pedido del cliente");
+
+            return order.Status;
         }
 
         public async Task<OrderDto?> UpdateOrderStatus(string orderId, string status)
@@ -96,95 +110,69 @@ namespace orders_service.Src.Repositories
             return order.ToDtoFromOrder();
         }
 
-        public async Task<OrderDto?> CancelOrderClient(CancelOrderClientDto request)
+        public async Task<OrderDto?> CancelOrder(RequestCancelOrderDto request)
         {
-            var order = _context.Orders.Where(o => o.CustomerId == request.CustomerId && o.Id == request.OrderId).ElementAt(0);
-
-            // Validacion: No se encontro el pedido
-            if (order == null)
+            if (request.UserRole == "Admin")
             {
-                throw new Exception("El cliente no tiene ningun pedido con el Id ingresado");
-            }
+                var order = await _context.Orders.FindAsync(request.OrderId);
 
-            // Validacion: El cliente no puedo cancelar un pedido si se sobrepaso la fecha limite de reembolso
-            var refundDealine = order.OrderDate.AddDays(15);
-            if (DateTime.UtcNow > refundDealine)
+                // Validacion: No se encontro el pedido
+                if (order == null)
+                {
+                    throw new Exception("No existe ningun pedido con el Id ingresado");
+                }
+
+                //Validacion: El admin no puede cancelar un pedido que ya fue entregado o cancelado
+                if (order.Status == "entregado" || order.Status == "cancelado")
+                {
+                    throw new Exception("No es posible cancelar un pedido que ya fue entregado o cancelado");
+                }
+
+                order.Status = "cancelado";
+                order.CancellationReason = request.CancellationReason;
+                await _context.SaveChangesAsync();
+
+                return order.ToDtoFromOrder();
+            }
+            else if (request.UserRole == "Client")
             {
-                throw new Exception($"La fecha limite de reembolso fue sobrepasada. Fecha limite: {refundDealine.ToLocalTime():dd/MM/yyyy}");
-            }
+                var order = _context.Orders.Where(o => o.UserId == request.UserId && o.Id == request.OrderId).ElementAt(0);
 
-            //Validacion: El cliente no puede cancelar un pedido que ya fue enviado, entregado o cancelado
-            if (order.Status == "enviado" || order.Status == "entregado" || order.Status == "cancelado")
+                // Validacion: No se encontro el pedido
+                if (order == null)
+                {
+                    throw new Exception("El cliente no tiene ningun pedido con el Id ingresado");
+                }
+
+                // Validacion: El cliente no puedo cancelar un pedido si se sobrepaso la fecha limite de reembolso
+                var refundDealine = order.OrderDate.AddDays(15);
+                if (DateTime.UtcNow > refundDealine)
+                {
+                    throw new Exception($"La fecha limite de reembolso fue sobrepasada. Fecha limite: {refundDealine.ToLocalTime():dd/MM/yyyy}");
+                }
+
+                //Validacion: El cliente no puede cancelar un pedido que ya fue enviado, entregado o cancelado
+                if (order.Status == "enviado" || order.Status == "entregado" || order.Status == "cancelado")
+                {
+                    throw new Exception("No es posible cancelar un pedido que ya fue enviado, entregado o cancelado");
+                }
+
+                order.Status = "cancelado";
+                order.CancellationReason = request.CancellationReason;
+                await _context.SaveChangesAsync();
+
+                return order.ToDtoFromOrder();
+            }
+            else
             {
-                throw new Exception("No es posible cancelar un pedido que ya fue enviado, entregado o cancelado");
+                throw new Exception("Rol de usuario desconocido");
             }
-
-            order.Status = "cancelado";
-            order.CancellationReason = request.CancellationReason;
-            await _context.SaveChangesAsync();
-
-            return order.ToDtoFromOrder();
         }
-        
-        public async Task<OrderDto?> CancelOrderAdmin(string orderId, string? cancellationReason)
-        {
-            var order = await _context.Orders.FindAsync(orderId);
 
-            // Validacion: No se encontro el pedido
-            if (order == null)
-            {
-                throw new Exception("No existe ningun pedido con el Id ingresado");
-            }
-
-            //Validacion: El admin no puede cancelar un pedido que ya fue entregado o cancelado
-            if (order.Status == "entregado" || order.Status == "cancelado")
-            {
-                throw new Exception("No es posible cancelar un pedido que ya fue entregado o cancelado");
-            }
-
-            order.Status = "cancelado";
-            order.CancellationReason = cancellationReason;
-            await _context.SaveChangesAsync();
-
-            return order.ToDtoFromOrder();
-        }
-
-        public async Task<List<OrderDto>?> GetOrdersClient(string customerId, QueryObjectOrder queryObject)
-        {
-            var orders = _context.Orders.Where(o => o.CustomerId == customerId).Include(o => o.Items).AsQueryable();
-
-            if (queryObject.OrderId != null)
-            {
-                orders = orders.Where(o => o.Id == queryObject.OrderId);
-            }
-            if (queryObject.InitialOrderDate != null && queryObject.FinalOrderDate != null)
-            {
-                // Validacion: El fecha de inicio no puede ser mayor a la fecha final
-                if (queryObject.InitialOrderDate > queryObject.FinalOrderDate) throw new Exception("La fecha de inicio no puede ser mayor a la fecha final");
-
-                orders = orders.Where(o => o.OrderDate > queryObject.InitialOrderDate && o.OrderDate < queryObject.FinalOrderDate);
-            }
-
-            var ordersDto = await orders.Select(o => o.ToDtoFromOrder()).ToListAsync();
-            
-            //Validacion: No se encontro el pedido
-            if (!ordersDto.Any())
-            {
-                throw new Exception("No se encontro ningun pedido");
-            }
-
-            return ordersDto;
-        }
-        
-        public async Task<List<OrderDto>?> GetOrdersAdmin(QueryObjectOrderAdmin queryObject)
+        public async Task<List<OrderDto>?> GetOrders(string userId, string userRole, QueryObjectOrder queryObject)
         {
             var orders = _context.Orders.Include(o => o.Items).AsQueryable();
 
-            if (queryObject.CustomerId != null)
-            {
-                orders = orders.Where(o => o.CustomerId == queryObject.CustomerId);
-            }
-
             if (queryObject.OrderId != null)
             {
                 orders = orders.Where(o => o.Id == queryObject.OrderId);
@@ -197,13 +185,25 @@ namespace orders_service.Src.Repositories
                 orders = orders.Where(o => o.OrderDate > queryObject.InitialOrderDate && o.OrderDate < queryObject.FinalOrderDate);
             }
 
-            var ordersDto = await orders.Select(o => o.ToDtoFromOrder()).ToListAsync();
-            
-            //Validacion: No se encontro el pedido
-            if (!ordersDto.Any())
+            if (userRole == "Admin")
             {
-                throw new Exception("No se encontro ningun pedido");
+                if (queryObject.CustomerId != null)
+                {
+                    orders = orders.Where(o => o.UserId == queryObject.CustomerId);
+                }
             }
+
+            if (userRole == "Client") orders = orders.Where(o => o.UserId == userId);
+
+            if(userRole != "Admin" && userRole != "Client")
+            {
+                throw new Exception("Rol del usuario desconocido");
+            }
+            
+            var ordersDto = await orders.Select(o => o.ToDtoFromOrder()).ToListAsync();
+
+            //Validacion: No se encontro el pedido
+            if (!ordersDto.Any()) throw new Exception("No se encontro ningun pedido");
 
             return ordersDto;
         }

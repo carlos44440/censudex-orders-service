@@ -21,6 +21,7 @@ namespace orders_service.Src.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             var userId = Request.Headers["X-Client-Id"].ToString();
+            if (userId == null) return Unauthorized(new { message = "No se encontro el id del usuario"});
             try
             {
                 var order = await _orderRepository.CreateOrder(createOrderItemsDtos, userId);
@@ -32,11 +33,13 @@ namespace orders_service.Src.Controllers
             }
         }
 
-        [HttpGet("checkOrderStatus/{customerId}/{orderId?}")]
-        public async Task<IActionResult> CheckOrderStatus([FromRoute] string customerId, [FromRoute] string? orderId)
+        [HttpGet("checkOrderStatus/{orderId}")]
+        public async Task<IActionResult> CheckOrderStatus([FromRoute] string orderId)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
+            var customerId = Request.Headers["X-Client-Id"].ToString();
+            if (customerId == null) return Unauthorized(new { message = "No se encontro el id del usuario"});
             try
             {
                 var checkOrdersStatus = await _orderRepository.CheckOrderStatus(customerId, orderId);
@@ -52,7 +55,7 @@ namespace orders_service.Src.Controllers
         public async Task<IActionResult> UpdateOrderStatus([FromRoute] string orderId, [FromBody] string status)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-
+            
             try
             {
                 var order = await _orderRepository.UpdateOrderStatus(orderId, status);
@@ -64,14 +67,27 @@ namespace orders_service.Src.Controllers
             }
         }
 
-        [HttpPut("cancelOrderClient")]
-        public async Task<IActionResult> CancelOrderClient([FromBody] CancelOrderClientDto cancelOrderClient)
+        [HttpPatch("cancelOrder/{orderId}")]
+        public async Task<IActionResult> CancelOrderClient([FromRoute] string orderId, [FromBody] string? cancellationReason)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
+            var userId = Request.Headers["X-Client-Id"].ToString();
+            if (userId == null) return Unauthorized(new { message = "No se encontro el id del usuario"});
+            var role = Request.Headers["X-Client-Role"].ToString();
+            if (role == null) return Unauthorized(new { message = "No se encontro el rol del usuario" });
+
+            var cancelOrderDto = new RequestCancelOrderDto
+            {
+                UserId = userId,
+                UserRole = role,
+                OrderId = orderId,
+                CancellationReason = cancellationReason
+            };
+
             try
             {
-                var order = await _orderRepository.CancelOrderClient(cancelOrderClient);
+                var order = await _orderRepository.CancelOrder(cancelOrderDto);
                 return Ok(order);
             }
             catch (Exception ex)
@@ -80,49 +96,22 @@ namespace orders_service.Src.Controllers
             }
         }
 
-        [HttpPut("cancelOrderAdmin/{orderId}")]
-        public async Task<IActionResult> CancelOrderAdmin([FromRoute] string orderId, [FromBody] string? cancellationReason)
+        [HttpGet("getOrders")]
+        public async Task<IActionResult> GetOrders([FromQuery] QueryObjectOrder queryObject)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            try
-            {
-                var order = await _orderRepository.CancelOrderAdmin(orderId, cancellationReason);
-                return Ok(order);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = ex.Message });
-            }
-        }
-
-        [HttpGet("getOrdersClient/{customerId}")]
-        public async Task<IActionResult> GetOrdersClient([FromRoute] string customerId, [FromQuery] QueryObjectOrder queryObject)
-        {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var userId = Request.Headers["X-Client-Id"].ToString();
+            if (userId == null) return Unauthorized(new { message = "No se encontro el id del usuario"});
+            var role = Request.Headers["X-Client-Role"].ToString();
+            if (role == null) return Unauthorized(new { message = "No se encontro el rol del usuario" });
 
             try
             {
-                var orders = await _orderRepository.GetOrdersClient(customerId, queryObject);
+                var orders = await _orderRepository.GetOrders(userId, role, queryObject);
                 return Ok(orders);
             }
             catch (Exception ex)
-            {
-                return StatusCode(500, new { message = ex.Message });
-            }
-        }
-
-        [HttpGet("getOrdersAdmin")]
-        public async Task<IActionResult> GetOrdersAdmin([FromQuery] QueryObjectOrderAdmin queryObject)
-        {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-
-            try
-            {
-                var orders = await _orderRepository.GetOrdersAdmin(queryObject);
-                return Ok(orders);
-            }
-            catch(Exception ex)
             {
                 return StatusCode(500, new { message = ex.Message });
             }

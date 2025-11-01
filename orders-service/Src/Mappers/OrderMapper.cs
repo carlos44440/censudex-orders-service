@@ -5,20 +5,6 @@ namespace orders_service.Src.Mappers
 {
     public static class OrderMapper
     {
-        public static OrderItem ToOrderItemFromDto(this OrderItemDto orderItemDto)
-        {
-            return new OrderItem
-            {
-                Id = Guid.NewGuid().ToString(),
-                ProductId = orderItemDto.ProductId,
-                ProductName = orderItemDto.ProductName,
-                Quantity = orderItemDto.Quantity,
-                UnitPrice = orderItemDto.UnitPrice,
-                SubTotal = orderItemDto.Quantity * orderItemDto.UnitPrice,
-                OrderId = string.Empty,
-            };
-        }
-
         public static OrderItemDto ToDtoFromOrderItem(this OrderItem orderItem)
         {
             return new OrderItemDto
@@ -37,7 +23,7 @@ namespace orders_service.Src.Mappers
             {
                 Id = order.Id,
                 OrderDate = order.OrderDate,
-                CustomerId = order.CustomerId,
+                UserId = order.UserId,
                 Items = order.Items.Select(ToDtoFromOrderItem).ToList(),
                 Status = order.Status,
                 TotalAmount = order.TotalAmount,
