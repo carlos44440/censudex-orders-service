@@ -1,10 +1,11 @@
 using DotNetEnv;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.OpenApi.Models;
 using orders_service.Src.Data;
 using orders_service.Src.Interfaces;
 using orders_service.Src.Repositories;
 using orders_service.Src.GrpcServices;
+using orders_service.Src.Services;
+using orders_service.Src.Helpers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +17,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 );
 
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<UserHeaderExtractor>();
 
 builder.Services.AddGrpc();
 builder.Services.AddGrpcReflection();

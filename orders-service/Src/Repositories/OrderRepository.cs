@@ -1,6 +1,4 @@
 using Grpc.Net.Client;
-using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.Identity;
 using ProductService;
 using Microsoft.EntityFrameworkCore;
 using orders_service.Src.Data;
@@ -16,14 +14,16 @@ namespace orders_service.Src.Repositories
     {
         private readonly AppDbContext _context;
         private readonly Product.ProductClient _productClient;
-        public OrderRepository(AppDbContext context)
+        private readonly IEmailService _emailService;
+        public OrderRepository(AppDbContext context, IEmailService emailService)
         {
             _context = context;
             var channel = GrpcChannel.ForAddress("http://localhost:5001");
             _productClient = new Product.ProductClient(channel);
+            _emailService = emailService;
         }
 
-        public async Task<OrderDto> CreateOrder(List<CreateOrderItemDto> createOrderItemsDtos, string userId)
+        public async Task<OrderDto> CreateOrderAsync(List<CreateOrderItemDto> createOrderItemsDtos, UserDataDto userData)
         {
             //Validacion: El pedido no puede tener dos productos duplicados
             if (createOrderItemsDtos.Select(i => i.ProductId).Distinct().Count() != createOrderItemsDtos.Count())
@@ -35,25 +35,67 @@ namespace orders_service.Src.Repositories
 
             foreach (var itemDto in createOrderItemsDtos)
             {
+                // Validacion: La id del producto no debe ser nula o vacia
+                if (string.IsNullOrWhiteSpace(itemDto.ProductId)) throw new Exception("La id del producto es nula o vacia");
+
                 //Validacion: La cantidad del producto debe ser mayor a 0
                 if (itemDto.Quantity <= 0) throw new Exception("La cantidad debe ser mayor a 0");
 
-                var response = _productClient.GetProductById(new GetProductRequest { Id = itemDto.ProductId });
+                // Por implementar: En caso de que un producto no tenga stock se manda un correo con productos alternativos
+
+                // En espera: Se debe contar con el servicio de producto activo
+                // var response = _productClient.GetProductById(new GetProductRequest { Id = itemDto.ProductId });
+
+                // Implementacion para pruebas
+                var product = new
+                {
+                    Id = itemDto.ProductId,
+                    Name = "Product",
+                    Price = 12,
+                };
 
                 //Validacion: El producto debe existir
-                if (response == null) throw new Exception($"El producto con la Id {itemDto.ProductId} no existe");
+                if (product == null) throw new Exception($"El producto con la Id {itemDto.ProductId} no existe");
+
+                //Validacion: El nombre no puede ser nulo o vacio
+                if (string.IsNullOrEmpty(product.Name)) throw new Exception("El nombre del producto no es valido");
 
                 //Validacion: El precio no puede ser menor o igual a 0
-                if (response.Price <= 0) throw new Exception("El precio del producto no es valido");
-                
+                if (product.Price <= 0) throw new Exception("El precio del producto no es valido");
+
+                // Por implementar: Llamada al servicio de inventarios para verificar si hay stock del producto
+                // var stockAvaible = _inventoryClient.GetStock(new GetStockRequest { Id = itemDto.ProductId });
+                // var stock = stockAvaible - itemDto.Quantity;
+                // if (stock < 0)
+                // {
+                //     var response = _productClient.GetProducts(new GetProductsRequest { ... });
+                //     var subject1 = $"Censudex: Producto sin stock - Recomendaciones para tu pedido";
+                //     var recommendedItems = string.Join("\n", response.Select(item =>
+                //         $"  - Producto: {item.ProductName}\n" +
+                //         $"    Precio unitario: ${item.UnitPrice}\n"
+                //     ));
+                //     var message1 =
+                //         $"Hola {userData.Name},\n\n" +
+                //         $"Lamentamos informarte que el producto con ID '{itemDto.ProductId}' actualmente no cuenta con stock disponible.\n\n" +
+                //         "Sabemos lo importante que es para ti recibir tus productos sin demoras, por lo que te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
+                //         $"{recommendedItems}\n" +
+                //         "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
+                //         "El monto correspondiente será reembolsado automáticamente en las próximas horas.\n\n" +
+                //         "Gracias por tu comprensión y por confiar en nosotros.\n" +
+                //         "El equipo de Censudex.";
+                //     var isEmailSent1 = await _emailService.SendEmailAsync(subject1, userData.EmailAddress, message1);
+                //     if (!isEmailSent1) Console.WriteLine("El email no fue enviado");
+                //     throw new Exception($"El producto {itemDto.ProductId} no tiene stock disponible");
+                // }
+
                 var orderItem = new OrderItem
                 {
                     Id = Guid.NewGuid().ToString(),
                     ProductId = itemDto.ProductId,
-                    ProductName = response.Name,
+                    ProductName = product.Name,
                     Quantity = itemDto.Quantity,
-                    UnitPrice = (int)response.Price,
-                    SubTotal = (int)response.Price * itemDto.Quantity
+                    UnitPrice = (int)product.Price,
+                    SubTotal = (int)product.Price * itemDto.Quantity
                 };
 
                 items.Add(orderItem);
@@ -63,7 +105,7 @@ namespace orders_service.Src.Repositories
             {
                 Id = Guid.NewGuid().ToString(),
                 OrderDate = DateTime.UtcNow,
-                UserId = userId,
+                UserId = userData.Id,
                 Items = items,
                 Status = "pendiente",
                 TotalAmount = items.Sum(item => item.SubTotal),
@@ -74,12 +116,47 @@ namespace orders_service.Src.Repositories
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
 
-            return order.ToDtoFromOrder();
+            var orderDto = order.ToDtoFromOrder();
+
+            // Enviar correo de confirmacion de creacion del pedido
+            string subject = $"Censudex: Confirmación de su compra #{orderDto.Id}";
+
+            var itemsDetails = string.Join("\n", orderDto.Items.Select(item =>
+                $"  - Producto: {item.ProductName}\n" +
+                $"    Cantidad: {item.Quantity}\n" +
+                $"    Precio unitario: ${item.UnitPrice}\n" +
+                $"    Subtotal: ${item.SubTotal}\n"
+            ));
+
+            string message =
+                $"Estimado cliente {userData.Name},\n\n" +
+                "Su pedido ha sido creado exitosamente.\n\n" +
+                $"Número de pedido: {orderDto.Id}\n\n" +
+                "Resumen de compra\n" +
+                $"  Items:\n" +
+                $"{itemsDetails}\n" +
+                $"  Total: ${orderDto.TotalAmount}\n\n" +
+                "Detalles de envío\n" +
+                $"  Numero de seguimiento: {orderDto.TrackingNumber}\n" +
+                $"  Fecha de entrega estimada: {orderDto.DeliveryDate}\n\n" +
+                "Gracias por confiar en nosotros.\n" +
+                "El equipo de Censudex.";
+
+            var isEmailSent = await _emailService.SendEmailAsync(subject, userData.EmailAddress, message);
+            if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+
+            return orderDto;
         }
 
-        public async Task<string> CheckOrderStatus(string customerId, string orderId)
+        public async Task<string> CheckOrderStatusAsync(string customerId, string orderId)
         {
-            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+            // Validacion: La id del cliente es nula
+            if (string.IsNullOrWhiteSpace(customerId)) throw new Exception("La id del cliente es nula o vacia");
+
+            //Valdacion: La id del pedido es nula
+            if (string.IsNullOrWhiteSpace(orderId)) throw new Exception("La id del pedido es nula o vacia");
+
+            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == customerId);
 
             //Validacion: No existe un pedido con el id entregado
             if (order == null) throw new Exception("La Id del pedido no corresponde a ningun pedido del cliente");
@@ -87,8 +164,10 @@ namespace orders_service.Src.Repositories
             return order.Status;
         }
 
-        public async Task<OrderDto> UpdateOrderStatus(string orderId, string status)
+        public async Task<OrderDto> UpdateOrderStatusAsync(string orderId, string status)
         {
+            if (string.IsNullOrWhiteSpace(orderId)) throw new Exception("La id del pedido es nula o vacia");
+
             var order = await _context.Orders.FindAsync(orderId);
 
             // Validacion: No se encontro el pedido
@@ -101,18 +180,65 @@ namespace orders_service.Src.Repositories
             var statusList = new[] { "pendiente", "en procesamiento", "enviado", "entregado", "cancelado" };
             if (!statusList.Contains(status.ToLower()))
             {
-                throw new Exception($"El estado debe ser uno de los siguientes valores. Estados validos: {statusList}");
+                throw new Exception($"El estado debe ser uno de los siguientes valores. Estados validos: {string.Join(", ", statusList)}");
             }
 
-            order.Status = status;
+            order.Status = status.ToLower();
             await _context.SaveChangesAsync();
+
+            // Por implementar: Llamar al serivicio de cliente para obtener los datos del usuario
+            // var user = _clientUser.getUser(order.UserId);
+
+            // Por implementar: Si el status se actualiza a "en procesamiento" se notifica al cliente que el pedido esta siendo preparado.
+            // if (status.ToLower() == "en procesamiento")
+            //{
+            //   var subject = $"Censudex: Tu pedido #{order.Id} está siendo preparado";
+            //   var message =
+            //    $"Hola {user.Name},\n\n" +
+            //    $"Queremos informarte que tu pedido #{order.Id} ha pasado al estado 'En procesamiento'.\n" +
+            //    $"Nuestro equipo está preparando tus productos para su envío.\n\n" +
+            //    "Te notificaremos nuevamente cuando el pedido sea despachado.\n\n" +
+            //    "Gracias por tu paciencia y por confiar en nosotros.\n" +
+            //    "El equipo de Censudex.";
+            //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
+            //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+            //}
+
+            // Por implementar: Si el status se actualiza a "enviado" se envia al cliente el numero de seguimiento y un enlace al transportista. 
+            // if (status.ToLower() == "enviado")
+            //{
+            //   var subject = $"Censudex: Tu pedido #{order.Id} ha sido enviado";
+            //   var message = 
+                // $"Hola {user.Name},\n\n" +
+                // $"Tu pedido #{order.Id} ha sido despachado y se encuentra en camino.\n\n" +
+                // $"Número de seguimiento: {order.TrackingNumber}\n\n" +
+                // "Gracias por tu preferencia y confianza.\n" +
+                // "El equipo de Censudex.";
+            //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
+            //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+            //}
+
+            // Por implementar: Si el status se actualiza a "entregado" se envia al cliente una notificacion de confirmacion final.
+            // if (status.ToLower() == "entregado")
+            //{
+            //   var subject = $"Censudex: Tu pedido #{order.Id} ha sido entregado";
+            //   var message =
+                // $"Hola {user.Name},\n\n" +
+                // $"Nos alegra informarte que tu pedido #{order.Id} ha sido entregado exitosamente.\n\n" +
+                // "Esperamos que estés satisfecho con tu compra.\n" +
+                // "Si tienes algún comentario o deseas evaluar tu experiencia, puedes hacerlo desde tu cuenta en nuestro portal.\n\n" +
+                // "Gracias por elegir Censudex.\n" +
+                // "El equipo de Censudex.";
+            //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
+            //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+            //}
 
             return order.ToDtoFromOrder();
         }
 
-        public async Task<OrderDto> CancelOrder(RequestCancelOrderDto request)
+        public async Task<OrderDto> CancelOrderAsync(RequestCancelOrderDto request, UserDataDto userData)
         {
-            if (request.UserRole == "Admin")
+            if (userData.Role == "Admin")
             {
                 var order = await _context.Orders.FindAsync(request.OrderId);
 
@@ -132,11 +258,29 @@ namespace orders_service.Src.Repositories
                 order.CancellationReason = request.CancellationReason;
                 await _context.SaveChangesAsync();
 
+                // Por implementar: Llamar al serivicio de cliente para obtener los datos del usuario
+                // var user = _clientUser.getUser(order.UserId);
+
+                // Por implementar: Se notifica al cliente una confirmacion de la cancelacion de su pedido, con el motivo, y el proceso de reembolso.
+                // var subject = $"Censudex: Confirmacion de la cancelacion del pedido #{order.Id}";
+                // var message =
+                //     $"Hola {user.Name},\n\n" +
+                //     "Te informamos que tu pedido #" + order.Id + " ha sido cancelado exitosamente.\n\n" +
+                //     (string.IsNullOrEmpty(order.CancellationReason) ? "" : $"Motivo de cancelación: {order.CancellationReason}\n\n") +
+                //     "En caso de que hayas realizado un pago, el proceso de reembolso se iniciará en las próximas horas. " +
+                //     "Dependiendo del método de pago, puede demorar entre 3 a 7 días hábiles.\n\n" +
+                //     "Si tienes alguna duda o necesitas más información, puedes contactar a nuestro equipo de soporte " +
+                //     "respondiendo este correo o ingresando a tu cuenta en nuestro portal.\n\n" +
+                //     "Gracias por confiar en nosotros.\n" +
+                //     "El equipo de Censudex";
+                // var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
+                // if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+
                 return order.ToDtoFromOrder();
             }
-            else if (request.UserRole == "Client")
+            else if (userData.Role == "Client")
             {
-                var order = _context.Orders.Where(o => o.UserId == request.UserId && o.Id == request.OrderId).ElementAt(0);
+                var order = _context.Orders.Where(o => o.UserId == userData.Id && o.Id == request.OrderId).ElementAt(0);
 
                 // Validacion: No se encontro el pedido
                 if (order == null)
@@ -161,6 +305,22 @@ namespace orders_service.Src.Repositories
                 order.CancellationReason = request.CancellationReason;
                 await _context.SaveChangesAsync();
 
+                // Enviar correo de confirmacion de cancelacion del pedido
+                string subject = $"Censudex: Confirmacion de la cancelacion del pedido #{order.Id}";
+                string message =
+                    $"Hola {userData.Name},\n\n" +
+                    "Te informamos que tu pedido #" + order.Id + " ha sido cancelado exitosamente.\n\n" +
+                    (string.IsNullOrEmpty(order.CancellationReason) ? "" : $"Motivo de cancelación: {order.CancellationReason}\n\n") +
+                    "En caso de que hayas realizado un pago, el proceso de reembolso se iniciará en las próximas horas. " +
+                    "Dependiendo del método de pago, puede demorar entre 3 a 7 días hábiles.\n\n" +
+                    "Si tienes alguna duda o necesitas más información, puedes contactar a nuestro equipo de soporte " +
+                    "respondiendo este correo o ingresando a tu cuenta en nuestro portal.\n\n" +
+                    "Gracias por confiar en nosotros.\n" +
+                    "El equipo de Censudex";
+
+                var isEmailSent = await _emailService.SendEmailAsync(subject, userData.EmailAddress, message);
+                if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+
                 return order.ToDtoFromOrder();
             }
             else
@@ -169,11 +329,11 @@ namespace orders_service.Src.Repositories
             }
         }
 
-        public async Task<List<OrderDto>> GetOrders(string userId, string userRole, QueryObjectOrder queryObject)
+        public async Task<List<OrderDto>> GetOrdersAsync(QueryObjectOrder queryObject, UserDataDto userData)
         {
             var orders = _context.Orders.Include(o => o.Items).AsQueryable();
 
-            if (queryObject.OrderId != null)
+            if (!string.IsNullOrWhiteSpace(queryObject.OrderId))
             {
                 orders = orders.Where(o => o.Id == queryObject.OrderId);
             }
@@ -185,17 +345,17 @@ namespace orders_service.Src.Repositories
                 orders = orders.Where(o => o.OrderDate > queryObject.InitialOrderDate && o.OrderDate < queryObject.FinalOrderDate);
             }
 
-            if (userRole == "Admin")
+            if (userData.Role == "Admin")
             {
-                if (queryObject.CustomerId != null)
+                if (!string.IsNullOrWhiteSpace(queryObject.CustomerId))
                 {
                     orders = orders.Where(o => o.UserId == queryObject.CustomerId);
                 }
             }
 
-            if (userRole == "Client") orders = orders.Where(o => o.UserId == userId);
+            if (userData.Role == "Client") orders = orders.Where(o => o.UserId == userData.Id);
 
-            if(userRole != "Admin" && userRole != "Client")
+            if(userData.Role != "Admin" && userData.Role != "Client")
             {
                 throw new Exception("Rol del usuario desconocido");
             }

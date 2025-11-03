@@ -9,10 +9,12 @@ namespace orders_service.Src.GrpcServices
     public class OrderGrpcService : Order.OrderBase
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly UserHeaderExtractor _userHeaderExtractor;
 
-        public OrderGrpcService(IOrderRepository orderRepository)
+        public OrderGrpcService(IOrderRepository orderRepository, UserHeaderExtractor userHeaderExtractor)
         {
             _orderRepository = orderRepository;
+            _userHeaderExtractor = userHeaderExtractor;
         }
 
         public override async Task<OrderResponse> CreateOrder(CreateOrderRequest request, ServerCallContext context)
@@ -25,7 +27,19 @@ namespace orders_service.Src.GrpcServices
                     Quantity = i.Quantity
                 }).ToList();
 
-                var order = await _orderRepository.CreateOrder(createItems, request.UserId);
+                // Implementacion final
+                // var userData = _userHeaderExtractor.GetUserData(context);
+
+                // Para pruebas
+                var userData = new UserDataDto
+                {
+                    Id = request.UserData.Id,
+                    Name = request.UserData.Name,
+                    Role = request.UserData.Role,
+                    EmailAddress = request.UserData.EmailAddress
+                };
+
+                var order = await _orderRepository.CreateOrderAsync(createItems, userData);
 
                 return new OrderResponse
                 {
@@ -57,7 +71,12 @@ namespace orders_service.Src.GrpcServices
         {
             try
             {
-                var result = await _orderRepository.CheckOrderStatus(request.CustomerId, request.OrderId);
+                // Implementacion final
+                // var customerId = _userHeaderExtractor.GetUserId(context);
+                // var result = await _orderRepository.CheckOrderStatusAsync(customerId, request.OrderId);
+                
+                // Para pruebas
+                var result = await _orderRepository.CheckOrderStatusAsync(request.CustomerId, request.OrderId);
 
                 return new OrderStatusResponse
                 {
@@ -74,7 +93,7 @@ namespace orders_service.Src.GrpcServices
         {
             try
             {
-                var updated = await _orderRepository.UpdateOrderStatus(request.OrderId, request.Status);
+                var updated = await _orderRepository.UpdateOrderStatusAsync(request.OrderId, request.Status);
 
                 return new OrderResponse
                 {
@@ -106,15 +125,25 @@ namespace orders_service.Src.GrpcServices
         {
             try
             {
-                var cancelOrderDto = new RequestCancelOrderDto
+                var requestCancelOrderDto = new RequestCancelOrderDto
                 {
-                    UserId = request.UserId,
-                    UserRole = request.UserRole,
-                    OrderId = request.OrderId,
-                    CancellationReason = request.CancellationReason
+                    OrderId = request.RequestCancelOrder.OrderId,
+                    CancellationReason = request.RequestCancelOrder.CancellationReason
                 };
 
-                var order = await _orderRepository.CancelOrder(cancelOrderDto);
+                // Implementacion final
+                // var userData = _userHeaderExtractor.GetUserData(context);
+
+                // Para pruebas
+                var userData = new UserDataDto
+                {
+                    Id = request.UserData.Id,
+                    Name = request.UserData.Name,
+                    Role = request.UserData.Role,
+                    EmailAddress = request.UserData.EmailAddress
+                };
+
+                var order = await _orderRepository.CancelOrderAsync(requestCancelOrderDto, userData);
 
                 return new OrderResponse
                 {
@@ -146,9 +175,7 @@ namespace orders_service.Src.GrpcServices
         {
             try
             {
-                if (request.QueryObject == null)
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, "QueryObject no puede ser nulo."));
-                var query = new orders_service.Src.Helpers.QueryObjectOrder
+                var query = new Helpers.QueryObjectOrder
                 {
                     OrderId = request.QueryObject.OrderId,
                     CustomerId = request.QueryObject.CustomerId,
@@ -160,7 +187,19 @@ namespace orders_service.Src.GrpcServices
                         : DateTime.Parse(request.QueryObject.FinalOrderDate)
                 };
 
-                var orders = await _orderRepository.GetOrders(request.UserId, request.UserRole, query);
+                // Implementacion final
+                // var userData = _userHeaderExtractor.GetUserData(context);
+
+                // Para pruebas
+                var userData = new UserDataDto
+                {
+                    Id = request.UserData.Id,
+                    Name = request.UserData.Name,
+                    Role = request.UserData.Role,
+                    EmailAddress = request.UserData.EmailAddress
+                };
+
+                var orders = await _orderRepository.GetOrdersAsync(query, userData);
 
                 var response = new GetOrdersResponse();
                 response.OrderDto.AddRange(orders.Select(o => new OrderResponse
