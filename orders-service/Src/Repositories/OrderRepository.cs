@@ -7,6 +7,9 @@ using orders_service.Src.Helpers;
 using orders_service.Src.Interfaces;
 using orders_service.Src.Mappers;
 using orders_service.Src.Models;
+using MassTransit;
+using MassTransit.Transports;
+using Shared.OrderCreatedEvent;
 
 namespace orders_service.Src.Repositories
 {
@@ -15,12 +18,14 @@ namespace orders_service.Src.Repositories
         private readonly AppDbContext _context;
         private readonly Product.ProductClient _productClient;
         private readonly IEmailService _emailService;
-        public OrderRepository(AppDbContext context, IEmailService emailService)
+        private readonly IPublishEndpoint _publishEndpoint;
+        public OrderRepository(AppDbContext context, IEmailService emailService, IPublishEndpoint publishEndpoint)
         {
             _context = context;
             var channel = GrpcChannel.ForAddress("http://localhost:5001");
             _productClient = new Product.ProductClient(channel);
             _emailService = emailService;
+            _publishEndpoint = publishEndpoint;
         }
 
         public async Task<OrderDto> CreateOrderAsync(List<CreateOrderItemDto> createOrderItemsDtos, UserDataDto userData)
@@ -41,8 +46,6 @@ namespace orders_service.Src.Repositories
                 //Validacion: La cantidad del producto debe ser mayor a 0
                 if (itemDto.Quantity <= 0) throw new Exception("La cantidad debe ser mayor a 0");
 
-                // Por implementar: En caso de que un producto no tenga stock se manda un correo con productos alternativos
-
                 // En espera: Se debe contar con el servicio de producto activo
                 // var response = _productClient.GetProductById(new GetProductRequest { Id = itemDto.ProductId });
 
@@ -62,31 +65,6 @@ namespace orders_service.Src.Repositories
 
                 //Validacion: El precio no puede ser menor o igual a 0
                 if (product.Price <= 0) throw new Exception("El precio del producto no es valido");
-
-                // Por implementar: Llamada al servicio de inventarios para verificar si hay stock del producto
-                // var stockAvaible = _inventoryClient.GetStock(new GetStockRequest { Id = itemDto.ProductId });
-                // var stock = stockAvaible - itemDto.Quantity;
-                // if (stock < 0)
-                // {
-                //     var response = _productClient.GetProducts(new GetProductsRequest { ... });
-                //     var subject1 = $"Censudex: Producto sin stock - Recomendaciones para tu pedido";
-                //     var recommendedItems = string.Join("\n", response.Select(item =>
-                //         $"  - Producto: {item.ProductName}\n" +
-                //         $"    Precio unitario: ${item.UnitPrice}\n"
-                //     ));
-                //     var message1 =
-                //         $"Hola {userData.Name},\n\n" +
-                //         $"Lamentamos informarte que el producto con ID '{itemDto.ProductId}' actualmente no cuenta con stock disponible.\n\n" +
-                //         "Sabemos lo importante que es para ti recibir tus productos sin demoras, por lo que te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
-                //         $"{recommendedItems}\n" +
-                //         "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
-                //         "El monto correspondiente será reembolsado automáticamente en las próximas horas.\n\n" +
-                //         "Gracias por tu comprensión y por confiar en nosotros.\n" +
-                //         "El equipo de Censudex.";
-                //     var isEmailSent1 = await _emailService.SendEmailAsync(subject1, userData.EmailAddress, message1);
-                //     if (!isEmailSent1) Console.WriteLine("El email no fue enviado");
-                //     throw new Exception($"El producto {itemDto.ProductId} no tiene stock disponible");
-                // }
 
                 var orderItem = new OrderItem
                 {
@@ -144,6 +122,14 @@ namespace orders_service.Src.Repositories
 
             var isEmailSent = await _emailService.SendEmailAsync(subject, userData.EmailAddress, message);
             if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+
+            var orderCreatedEvent = new OrderCreatedEvent
+            {
+                Order = orderDto,
+                SentAt = DateTime.UtcNow
+            };
+            // Mandar evento de RabbitMQ: order.created
+            await _publishEndpoint.Publish(orderCreatedEvent);
 
             return orderDto;
         }
@@ -261,7 +247,31 @@ namespace orders_service.Src.Repositories
                 // Por implementar: Llamar al serivicio de cliente para obtener los datos del usuario
                 // var user = _clientUser.getUser(order.UserId);
 
-                // Por implementar: Se notifica al cliente una confirmacion de la cancelacion de su pedido, con el motivo, y el proceso de reembolso.
+                // En espera: mandar mensaje personalizado en caso de producto sin stock
+
+                // if (request.OutOfStockProductId != null)
+                // {
+                //     var response = _productClient.GetProducts(new GetProductsRequest { ... });
+                //     var subject1 = $"Censudex: Producto sin stock - Recomendaciones para tu pedido";
+                //     var recommendedItems = string.Join("\n", response.Select(item =>
+                //         $"  - Producto: {item.ProductName}\n" +
+                //         $"    Precio unitario: ${item.UnitPrice}\n"
+                //     ));
+                //     var message1 =
+                //         $"Hola {user.Name},\n\n" +
+                //         $"Lamentamos informarte que el producto con ID '{request.OutOfStockProductId}' actualmente no cuenta con stock disponible.\n\n" +
+                //         "Sabemos lo importante que es para ti recibir tus productos sin demoras, por lo que te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
+                //         $"{recommendedItems}\n" +
+                //         "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
+                //         "El monto correspondiente será reembolsado automáticamente en las próximas horas.\n\n" +
+                //         "Gracias por tu comprensión y por confiar en nosotros.\n" +
+                //         "El equipo de Censudex.";
+                //     var isEmailSent1 = await _emailService.SendEmailAsync(subject1, user.EmailAddress, message1);
+                //     if (!isEmailSent1) Console.WriteLine("El email no fue enviado");
+                // }
+
+                // En espera: Se notifica al cliente una confirmacion de la cancelacion de su pedido, con el motivo, y el proceso de reembolso.
+                // else {
                 // var subject = $"Censudex: Confirmacion de la cancelacion del pedido #{order.Id}";
                 // var message =
                 //     $"Hola {user.Name},\n\n" +
@@ -275,7 +285,7 @@ namespace orders_service.Src.Repositories
                 //     "El equipo de Censudex";
                 // var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
                 // if (!isEmailSent) Console.WriteLine("El email no fue enviado");
-
+                // }
                 return order.ToDtoFromOrder();
             }
             else if (userData.Role == "Client")

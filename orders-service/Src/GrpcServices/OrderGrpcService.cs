@@ -128,7 +128,8 @@ namespace orders_service.Src.GrpcServices
                 var requestCancelOrderDto = new RequestCancelOrderDto
                 {
                     OrderId = request.RequestCancelOrder.OrderId,
-                    CancellationReason = request.RequestCancelOrder.CancellationReason
+                    CancellationReason = request.RequestCancelOrder.CancellationReason,
+                    OutOfStockProductId = request.RequestCancelOrder.OutOfStockProductId
                 };
 
                 // Implementacion final

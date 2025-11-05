@@ -6,7 +6,7 @@ namespace orders_service.Src.DTOs
     {
         [Required]
         public string OrderId { get; set; } = string.Empty;
-
         public string? CancellationReason { get; set; }
+        public string? OutOfStockProductId { get; set; }
     }
 }

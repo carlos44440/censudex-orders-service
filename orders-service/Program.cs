@@ -6,6 +6,9 @@ using orders_service.Src.Repositories;
 using orders_service.Src.GrpcServices;
 using orders_service.Src.Services;
 using orders_service.Src.Helpers;
+using MassTransit;
+using ConsumerApi.Consumers;
+using Shared.OrderCreatedEvent;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +22,31 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<UserHeaderExtractor>();
+
+// MassTransit
+builder.Services.AddMassTransit(x =>
+{
+    x.AddConsumer<OrderFailedStockConsumer>();
+
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        cfg.Host("localhost", "/", h =>
+        {
+            h.Username("guest");
+            h.Password("guest");
+        });
+
+        cfg.Send<OrderCreatedEvent>(config =>
+        {
+            config.UseRoutingKeyFormatter(context => "order-created-queue");
+        });
+
+        cfg.ReceiveEndpoint("order-failed-stock-queue", e =>
+        {
+            e.ConfigureConsumer<OrderFailedStockConsumer>(context);
+        });
+    });
+});
 
 builder.Services.AddGrpc();
 builder.Services.AddGrpcReflection();
