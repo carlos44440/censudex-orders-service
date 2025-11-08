@@ -8,7 +8,7 @@ using orders_service.Src.Services;
 using orders_service.Src.Helpers;
 using MassTransit;
 using ConsumerApi.Consumers;
-using Shared.OrderCreatedEvent;
+using Shared.OrderCreatedMessage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,20 +30,37 @@ builder.Services.AddMassTransit(x =>
 
     x.UsingRabbitMq((context, cfg) =>
     {
-        cfg.Host("localhost", "/", h =>
+        cfg.Host(Environment.GetEnvironmentVariable("RABBITMQ_HOST")?? "localhost", "/", h =>
         {
-            h.Username("guest");
-            h.Password("guest");
+            h.Username(Environment.GetEnvironmentVariable("RABBITMQ_USERNAME")?? "guest");
+            h.Password(Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD")?? "guest");
         });
 
-        cfg.Send<OrderCreatedEvent>(config =>
+        cfg.Message<OrderCreatedMessage>(e =>
         {
-            config.UseRoutingKeyFormatter(context => "order-created-queue");
+            e.SetEntityName("order_events");
+        });
+
+        cfg.Publish<OrderCreatedMessage>(e =>
+        {
+            e.ExchangeType = "topic";
+        });
+
+        cfg.Send<OrderCreatedMessage>(config =>
+        {
+            config.UseRoutingKeyFormatter(context => "order.created");
         });
 
         cfg.ReceiveEndpoint("order-failed-stock-queue", e =>
         {
             e.ConfigureConsumer<OrderFailedStockConsumer>(context);
+            
+            // Bind para escuchar mensajes desde order_events con order.failed.stock
+            e.Bind("order_events", x =>
+            {
+                x.RoutingKey = "order.failed.stock";
+                x.ExchangeType = "topic";
+            });
         });
     });
 });

@@ -24,8 +24,9 @@ namespace orders_service.Src.Data.Migrations
 
             modelBuilder.Entity("orders_service.Src.Models.Order", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("CancellationReason")
                         .HasColumnType("longtext");
@@ -46,9 +47,8 @@ namespace orders_service.Src.Data.Migrations
                     b.Property<string>("TrackingNumber")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
 
                     b.HasKey("Id");
 
@@ -57,16 +57,15 @@ namespace orders_service.Src.Data.Migrations
 
             modelBuilder.Entity("orders_service.Src.Models.OrderItem", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
 
-                    b.Property<string>("OrderId")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("char(36)");
 
-                    b.Property<string>("ProductId")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("ProductName")
                         .IsRequired()

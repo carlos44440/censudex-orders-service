@@ -1,11 +1,12 @@
 using MassTransit;
+using Microsoft.OpenApi.Extensions;
 using orders_service.Src.DTOs;
 using orders_service.Src.Interfaces;
-using Shared.OrderFailedStockEvent;
+using Shared.OrderFailedStockMessage;
 
 namespace ConsumerApi.Consumers
 {
-    public class OrderFailedStockConsumer : IConsumer<OrderFailedStockEvent>
+    public class OrderFailedStockConsumer : IConsumer<OrderFailedStockMessage>
     {
         private readonly IOrderRepository _orderRepository;
 
@@ -14,24 +15,24 @@ namespace ConsumerApi.Consumers
             _orderRepository = orderRepository;
         }
         
-        public async Task Consume(ConsumeContext<OrderFailedStockEvent> context)
+        public async Task Consume(ConsumeContext<OrderFailedStockMessage> context)
         {
             var message = context.Message;
-            Console.WriteLine($"[{message.FailedAt:HH:mm:ss}] {message.OrderId}: {message.Reason}");
+            Console.WriteLine($"[{message.FailedAt:HH:mm:ss}] {message.OrderId} - {message.FailedProducts}: {message.Reason}");
 
             var requestCancelOrderDto = new RequestCancelOrderDto
             {
                 OrderId = message.OrderId,
                 CancellationReason = message.Reason,
-                OutOfStockProductId = message.ProductId
+                FailedProducts = message.FailedProducts
             };
 
             var userData = new UserDataDto
             {
-                Id = "12212sss",
-                Name = "Admin",
+                Id = Guid.Empty,
+                Name = "System",
                 Role = "Admin",
-                EmailAddress = "admin@ucn.cl"
+                EmailAddress = "admin@gmail.com"
             };
 
             await _orderRepository.CancelOrderAsync(requestCancelOrderDto, userData);

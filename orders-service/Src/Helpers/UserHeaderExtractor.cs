@@ -22,7 +22,7 @@ namespace orders_service.Src.Helpers
 
             return new UserDataDto
             {
-                Id = userId,
+                Id = Guid.Parse(userId),
                 Name = userName,
                 Role = userRole,
                 EmailAddress = userEmail

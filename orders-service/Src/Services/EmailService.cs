@@ -12,7 +12,9 @@ namespace orders_service.Src.Services
         {
             var apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
             _client = new SendGridClient(apiKey);
-            _from = new EmailAddress("carlos.arauco@alumnos.ucn.cl", "Carlos");
+            var senderEmail = Environment.GetEnvironmentVariable("SENDER_EMAIL");
+            var senderName = Environment.GetEnvironmentVariable("SENDER_NAME");
+            _from = new EmailAddress(senderEmail, senderName);
         }
         public async Task<bool> SendEmailAsync(string subject, string toEmail, string message)
         {

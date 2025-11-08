@@ -66,9 +66,8 @@ message CancelOrderRequest{
 }
 
 message RequestCancelOrder{
-   string orderId = 1;
-   string cancellationReason = 2;
-   string OutOfStockProductId = 3;
+  string orderId = 1;
+  string cancellationReason = 2;
 }
 
 // Get Order

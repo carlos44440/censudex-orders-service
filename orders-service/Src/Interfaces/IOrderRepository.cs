@@ -6,8 +6,8 @@ namespace orders_service.Src.Interfaces
     public interface IOrderRepository
     {
         Task<OrderDto> CreateOrderAsync(List<CreateOrderItemDto> createOrderItemsDtos, UserDataDto userData);
-        Task<string> CheckOrderStatusAsync(string customerId, string orderId);
-        Task<OrderDto> UpdateOrderStatusAsync(string orderId, string status);
+        Task<string> CheckOrderStatusAsync(Guid customerId, Guid orderId);
+        Task<OrderDto> UpdateOrderStatusAsync(Guid orderId, string status);
         Task<OrderDto> CancelOrderAsync(RequestCancelOrderDto cancelOrder, UserDataDto userData);
         Task<List<OrderDto>> GetOrdersAsync(QueryObjectOrder queryObject, UserDataDto userData);
     }

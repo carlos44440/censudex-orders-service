@@ -1,12 +1,10 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace orders_service.Src.DTOs
 {
     public class OrderDto
     {
-        public string Id { get; set; } = string.Empty;
+        public Guid Id { get; set; }
         public DateTime OrderDate { get; set; }
-        public string UserId { get; set; } = string.Empty;
+        public Guid UserId { get; set; }
         public List<OrderItemDto> Items { get; set; } = new List<OrderItemDto>();
         public string Status { get; set; } = string.Empty;
         public decimal TotalAmount { get; set; }

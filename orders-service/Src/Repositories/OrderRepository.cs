@@ -8,8 +8,8 @@ using orders_service.Src.Interfaces;
 using orders_service.Src.Mappers;
 using orders_service.Src.Models;
 using MassTransit;
-using MassTransit.Transports;
-using Shared.OrderCreatedEvent;
+using Shared.OrderCreatedMessage;
+using orders_service.Src.Messages;
 
 namespace orders_service.Src.Repositories
 {
@@ -22,7 +22,8 @@ namespace orders_service.Src.Repositories
         public OrderRepository(AppDbContext context, IEmailService emailService, IPublishEndpoint publishEndpoint)
         {
             _context = context;
-            var channel = GrpcChannel.ForAddress("http://localhost:5001");
+            var channel = GrpcChannel.ForAddress(Environment.GetEnvironmentVariable("PRODUCT_SERVICE_URL") 
+                ?? throw new Exception("No se encontro la direccion del servicio de productos"));
             _productClient = new Product.ProductClient(channel);
             _emailService = emailService;
             _publishEndpoint = publishEndpoint;
@@ -41,7 +42,7 @@ namespace orders_service.Src.Repositories
             foreach (var itemDto in createOrderItemsDtos)
             {
                 // Validacion: La id del producto no debe ser nula o vacia
-                if (string.IsNullOrWhiteSpace(itemDto.ProductId)) throw new Exception("La id del producto es nula o vacia");
+                if (itemDto.ProductId == Guid.Empty) throw new Exception("La id del producto es nula o vacia");
 
                 //Validacion: La cantidad del producto debe ser mayor a 0
                 if (itemDto.Quantity <= 0) throw new Exception("La cantidad debe ser mayor a 0");
@@ -68,7 +69,7 @@ namespace orders_service.Src.Repositories
 
                 var orderItem = new OrderItem
                 {
-                    Id = Guid.NewGuid().ToString(),
+                    Id = Guid.NewGuid(),
                     ProductId = itemDto.ProductId,
                     ProductName = product.Name,
                     Quantity = itemDto.Quantity,
@@ -81,7 +82,7 @@ namespace orders_service.Src.Repositories
 
             var order = new Order
             {
-                Id = Guid.NewGuid().ToString(),
+                Id = Guid.NewGuid(),
                 OrderDate = DateTime.UtcNow,
                 UserId = userData.Id,
                 Items = items,
@@ -123,24 +124,41 @@ namespace orders_service.Src.Repositories
             var isEmailSent = await _emailService.SendEmailAsync(subject, userData.EmailAddress, message);
             if (!isEmailSent) Console.WriteLine("El email no fue enviado");
 
-            var orderCreatedEvent = new OrderCreatedEvent
+            // Mandar mensaje de RabbitMQ: order.created
+            var orderItemsMessage = new List<OrderItemMessage> { };
+
+            foreach (var i in createOrderItemsDtos)
             {
-                Order = orderDto,
-                SentAt = DateTime.UtcNow
+                var orderItemM = new OrderItemMessage
+                {
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity
+                };
+                orderItemsMessage.Add(orderItemM);
+            }
+
+            var orderCreatedMessage = new OrderCreatedMessage
+            {
+                OrderId = orderDto.Id,
+                CustomerId = orderDto.UserId,
+                Items = orderItemsMessage,
+                CreatedAt = orderDto.OrderDate
             };
-            // Mandar evento de RabbitMQ: order.created
-            await _publishEndpoint.Publish(orderCreatedEvent);
+            await _publishEndpoint.Publish(orderCreatedMessage, context =>
+            {
+                context.SetRoutingKey("order.created");
+            });
 
             return orderDto;
         }
 
-        public async Task<string> CheckOrderStatusAsync(string customerId, string orderId)
+        public async Task<string> CheckOrderStatusAsync(Guid customerId, Guid orderId)
         {
             // Validacion: La id del cliente es nula
-            if (string.IsNullOrWhiteSpace(customerId)) throw new Exception("La id del cliente es nula o vacia");
+            if (customerId == Guid.Empty) throw new Exception("La id del cliente es nula o vacia");
 
             //Valdacion: La id del pedido es nula
-            if (string.IsNullOrWhiteSpace(orderId)) throw new Exception("La id del pedido es nula o vacia");
+            if (orderId == Guid.Empty) throw new Exception("La id del pedido es nula o vacia");
 
             var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == customerId);
 
@@ -150,9 +168,9 @@ namespace orders_service.Src.Repositories
             return order.Status;
         }
 
-        public async Task<OrderDto> UpdateOrderStatusAsync(string orderId, string status)
+        public async Task<OrderDto> UpdateOrderStatusAsync(Guid orderId, string status)
         {
-            if (string.IsNullOrWhiteSpace(orderId)) throw new Exception("La id del pedido es nula o vacia");
+            if (orderId == Guid.Empty) throw new Exception("La id del pedido es nula o vacia");
 
             var order = await _context.Orders.FindAsync(orderId);
 
@@ -249,7 +267,7 @@ namespace orders_service.Src.Repositories
 
                 // En espera: mandar mensaje personalizado en caso de producto sin stock
 
-                // if (request.OutOfStockProductId != null)
+                // if (request.FailedProducts != null)
                 // {
                 //     var response = _productClient.GetProducts(new GetProductsRequest { ... });
                 //     var subject1 = $"Censudex: Producto sin stock - Recomendaciones para tu pedido";
@@ -259,7 +277,7 @@ namespace orders_service.Src.Repositories
                 //     ));
                 //     var message1 =
                 //         $"Hola {user.Name},\n\n" +
-                //         $"Lamentamos informarte que el producto con ID '{request.OutOfStockProductId}' actualmente no cuenta con stock disponible.\n\n" +
+                //         $"Lamentamos informarte que los siguientes productos'{request.FailedProducts}' actualmente no cuenta con stock disponible.\n\n" +
                 //         "Sabemos lo importante que es para ti recibir tus productos sin demoras, por lo que te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
                 //         $"{recommendedItems}\n" +
                 //         "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
@@ -343,7 +361,7 @@ namespace orders_service.Src.Repositories
         {
             var orders = _context.Orders.Include(o => o.Items).AsQueryable();
 
-            if (!string.IsNullOrWhiteSpace(queryObject.OrderId))
+            if (queryObject.OrderId != Guid.Empty)
             {
                 orders = orders.Where(o => o.Id == queryObject.OrderId);
             }
@@ -357,7 +375,7 @@ namespace orders_service.Src.Repositories
 
             if (userData.Role == "Admin")
             {
-                if (!string.IsNullOrWhiteSpace(queryObject.CustomerId))
+                if (queryObject.CustomerId != Guid.Empty)
                 {
                     orders = orders.Where(o => o.UserId == queryObject.CustomerId);
                 }

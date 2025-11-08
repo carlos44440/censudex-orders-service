@@ -12,8 +12,8 @@ using orders_service.Src.Data;
 namespace orders_service.Src.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251024055018_newModels")]
-    partial class newModels
+    [Migration("20251107040659_InitialClean")]
+    partial class InitialClean
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -27,14 +27,11 @@ namespace orders_service.Src.Data.Migrations
 
             modelBuilder.Entity("orders_service.Src.Models.Order", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("CancellationReason")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("CustomerId")
-                        .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<DateTime?>("DeliveryDate")
@@ -53,6 +50,9 @@ namespace orders_service.Src.Data.Migrations
                     b.Property<string>("TrackingNumber")
                         .HasColumnType("longtext");
 
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
                     b.ToTable("Orders");
@@ -60,21 +60,24 @@ namespace orders_service.Src.Data.Migrations
 
             modelBuilder.Entity("orders_service.Src.Models.OrderItem", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
 
-                    b.Property<string>("OrderId")
-                        .HasColumnType("varchar(255)");
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("char(36)");
 
-                    b.Property<string>("ProductId")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("ProductName")
                         .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SubTotal")
                         .HasColumnType("int");
 
                     b.Property<int>("UnitPrice")
@@ -89,9 +92,13 @@ namespace orders_service.Src.Data.Migrations
 
             modelBuilder.Entity("orders_service.Src.Models.OrderItem", b =>
                 {
-                    b.HasOne("orders_service.Src.Models.Order", null)
+                    b.HasOne("orders_service.Src.Models.Order", "Order")
                         .WithMany("Items")
-                        .HasForeignKey("OrderId");
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("orders_service.Src.Models.Order", b =>
