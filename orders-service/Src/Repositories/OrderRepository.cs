@@ -13,22 +13,58 @@ using orders_service.Src.Messages;
 
 namespace orders_service.Src.Repositories
 {
+    /// <summary>
+    /// Repositorio para la gestión de pedidos.
+    /// </summary>
     public class OrderRepository : IOrderRepository
     {
+        /// <summary>
+        /// Contexto de base de datos.
+        /// </summary>
         private readonly AppDbContext _context;
+        /// <summary>
+        /// Cliente gRPC del Product Service.
+        /// </summary>
         private readonly Product.ProductClient _productClient;
+        /// <summary>
+        /// Servicio de envio de correos electrónicos.
+        /// </summary>
         private readonly IEmailService _emailService;
+        /// <summary>
+        /// Endpoint para publicación de eventos de RabbitMQ.
+        /// </summary>
         private readonly IPublishEndpoint _publishEndpoint;
+        /// <summary>
+        /// Instancia del repositorio de pedidos.
+        /// </summary>
+        /// <param name="context">Contexto de la base de datos.</param>
+        /// <param name="emailService">Servicio de envio de correos electrónicos.</param>
+        /// <param name="publishEndpoint">Endpoint para publicación de eventos de RabbitMQ.</param>
         public OrderRepository(AppDbContext context, IEmailService emailService, IPublishEndpoint publishEndpoint)
         {
             _context = context;
-            var channel = GrpcChannel.ForAddress(Environment.GetEnvironmentVariable("PRODUCT_SERVICE_URL") 
+            var channel = GrpcChannel.ForAddress(Environment.GetEnvironmentVariable("PRODUCT_SERVICE_URL")
                 ?? throw new Exception("No se encontro la direccion del servicio de productos"));
             _productClient = new Product.ProductClient(channel);
             _emailService = emailService;
             _publishEndpoint = publishEndpoint;
         }
 
+        /// <summary>
+        /// Función para crear pedidos.
+        /// </summary>
+        /// <param name="createOrderItemsDtos">Artículos del pedido.</param>
+        /// <param name="userData">Información del usuario.</param>
+        /// <returns>Retorna el pedido creado.</returns>
+        /// <exception cref="Exception">
+        /// Se lanza cuando:
+        /// <list type="bullet">
+        /// <item>El pedido contiene productos duplicados.</item>
+        /// <item>Algún producto posee un ID inválido.</item>
+        /// <item>La cantidad solicitada es menor o igual a cero.</item>
+        /// <item>El producto no existe o sus datos no son válidos (nombre o precio).</item>
+        /// </list>
+        /// </exception>
         public async Task<OrderDto> CreateOrderAsync(List<CreateOrderItemDto> createOrderItemsDtos, UserDataDto userData)
         {
             //Validacion: El pedido no puede tener dos productos duplicados
@@ -152,6 +188,20 @@ namespace orders_service.Src.Repositories
             return orderDto;
         }
 
+        /// <summary>
+        /// Función para consultar el estado de un pedido.
+        /// </summary>
+        /// <param name="customerId">Identificador único del cliente.</param>
+        /// <param name="orderId">Identificador único del pedido.</param>
+        /// <returns>Retorna el estado del pedido.</returns>
+        /// <exception cref="Exception">
+        /// Se lanza cuando:
+        /// <list type="bullet">
+        /// <item>La id del cliente es nula o vacia.</item>
+        /// <item>La id del pedido es nula o vacia.</item>
+        /// <item>La Id del pedido no corresponde a ningun pedido del cliente.</item>
+        /// </list>
+        /// </exception>
         public async Task<string> CheckOrderStatusAsync(Guid customerId, Guid orderId)
         {
             // Validacion: La id del cliente es nula
@@ -168,6 +218,20 @@ namespace orders_service.Src.Repositories
             return order.Status;
         }
 
+        /// <summary>
+        /// Función para actualizar el estado de un pedido.
+        /// </summary>
+        /// <param name="orderId">Identificador único del pedido.</param>
+        /// <param name="status">Estado del pedido.</param>
+        /// <returns>Retorna el pedido creado.</returns>
+        /// <exception cref="Exception">
+        /// Se lanza cuando:
+        /// <list type="bullet">
+        /// <item>La id del pedido es nula o vacia.</item>
+        /// <item>No existe ningun pedido con el Id ingresado.</item>
+        /// <item>El estado no es un valor valido.</item>
+        /// </list>
+        /// </exception>
         public async Task<OrderDto> UpdateOrderStatusAsync(Guid orderId, string status)
         {
             if (orderId == Guid.Empty) throw new Exception("La id del pedido es nula o vacia");
@@ -213,11 +277,11 @@ namespace orders_service.Src.Repositories
             //{
             //   var subject = $"Censudex: Tu pedido #{order.Id} ha sido enviado";
             //   var message = 
-                // $"Hola {user.Name},\n\n" +
-                // $"Tu pedido #{order.Id} ha sido despachado y se encuentra en camino.\n\n" +
-                // $"Número de seguimiento: {order.TrackingNumber}\n\n" +
-                // "Gracias por tu preferencia y confianza.\n" +
-                // "El equipo de Censudex.";
+            // $"Hola {user.Name},\n\n" +
+            // $"Tu pedido #{order.Id} ha sido despachado y se encuentra en camino.\n\n" +
+            // $"Número de seguimiento: {order.TrackingNumber}\n\n" +
+            // "Gracias por tu preferencia y confianza.\n" +
+            // "El equipo de Censudex.";
             //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
             //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
             //}
@@ -227,12 +291,12 @@ namespace orders_service.Src.Repositories
             //{
             //   var subject = $"Censudex: Tu pedido #{order.Id} ha sido entregado";
             //   var message =
-                // $"Hola {user.Name},\n\n" +
-                // $"Nos alegra informarte que tu pedido #{order.Id} ha sido entregado exitosamente.\n\n" +
-                // "Esperamos que estés satisfecho con tu compra.\n" +
-                // "Si tienes algún comentario o deseas evaluar tu experiencia, puedes hacerlo desde tu cuenta en nuestro portal.\n\n" +
-                // "Gracias por elegir Censudex.\n" +
-                // "El equipo de Censudex.";
+            // $"Hola {user.Name},\n\n" +
+            // $"Nos alegra informarte que tu pedido #{order.Id} ha sido entregado exitosamente.\n\n" +
+            // "Esperamos que estés satisfecho con tu compra.\n" +
+            // "Si tienes algún comentario o deseas evaluar tu experiencia, puedes hacerlo desde tu cuenta en nuestro portal.\n\n" +
+            // "Gracias por elegir Censudex.\n" +
+            // "El equipo de Censudex.";
             //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
             //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
             //}
@@ -240,6 +304,20 @@ namespace orders_service.Src.Repositories
             return order.ToDtoFromOrder();
         }
 
+        /// <summary>
+        /// Función para cancelar un pedido.
+        /// </summary>
+        /// <param name="request">Request para cancelar un pedido.</param>
+        /// <param name="userData">Información del usuario.</param>
+        /// <returns>Retorna el pedido cancelado.</returns>
+        /// <exception cref="Exception">
+        /// Se lanza cuando:
+        /// <list type="bullet">
+        /// <item>No existe ningun pedido con el Id ingresado.</item>
+        /// <item>El pedido ya fue entregado o cancelado.</item>
+        /// <item>La fecha limite de reembolso fue sobrepasada.</item>
+        /// </list>
+        /// </exception>
         public async Task<OrderDto> CancelOrderAsync(RequestCancelOrderDto request, UserDataDto userData)
         {
             if (userData.Role == "Admin")
@@ -357,6 +435,18 @@ namespace orders_service.Src.Repositories
             }
         }
 
+        /// <summary>
+        /// Función para obtener pedidos.
+        /// </summary>
+        /// <param name="queryObject">Filtros para los pedidos.</param>
+        /// <param name="userData">Información del usuario.</param>
+        /// <returns>Retorna lista de pedidos.</returns>
+        /// <exception cref="Exception">
+        /// Se lanza cuando:
+        /// <list type="bullet">
+        /// <item>No se encontro ningun pedido.</item>
+        /// </list>
+        /// </exception>
         public async Task<List<OrderDto>> GetOrdersAsync(QueryObjectOrder queryObject, UserDataDto userData)
         {
             var orders = _context.Orders.Include(o => o.Items).AsQueryable();
@@ -383,11 +473,11 @@ namespace orders_service.Src.Repositories
 
             if (userData.Role == "Client") orders = orders.Where(o => o.UserId == userData.Id);
 
-            if(userData.Role != "Admin" && userData.Role != "Client")
+            if (userData.Role != "Admin" && userData.Role != "Client")
             {
                 throw new Exception("Rol del usuario desconocido");
             }
-            
+
             var ordersDto = await orders.Select(o => o.ToDtoFromOrder()).ToListAsync();
 
             //Validacion: No se encontro el pedido

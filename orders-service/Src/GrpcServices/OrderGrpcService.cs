@@ -7,17 +7,27 @@ using OrderService;
 
 namespace orders_service.Src.GrpcServices
 {
+    // Servicio gRPC que expone operaciones CRUD de pedidos
+    // y actúa como puente entre clientes externos y el repositorio interno.
     public class OrderGrpcService : Order.OrderBase
     {
+        // Dependencia que encapsula la lógica de negocio de los pedidos.
         private readonly IOrderRepository _orderRepository;
+
+        // Utilidad para extraer la información del usuario desde los headers gRPC.
         private readonly UserHeaderExtractor _userHeaderExtractor;
 
+        // Constructor del servicio gRPC.
+        // Inyecta el repositorio y el extractor de encabezados de usuario.
         public OrderGrpcService(IOrderRepository orderRepository, UserHeaderExtractor userHeaderExtractor)
         {
             _orderRepository = orderRepository;
             _userHeaderExtractor = userHeaderExtractor;
         }
 
+        // Endpoint gRPC para crear pedidos.
+        // Convierte el request gRPC en DTOs internos y delega la creación al repositorio.
+        // Devuelve un OrderResponse estructurado para el cliente gRPC.
         public override async Task<OrderResponse> CreateOrder(CreateOrderRequest request, ServerCallContext context)
         {
             try
@@ -28,10 +38,8 @@ namespace orders_service.Src.GrpcServices
                     Quantity = i.Quantity
                 }).ToList();
 
-                // Implementacion final
-                // var userData = _userHeaderExtractor.GetUserData(context);
-
-                // Para pruebas
+                // Nota: la implementación final extraerá el usuario desde los headers.
+                // Actualmente se utiliza un objeto de prueba definido en el request.
                 var userData = new UserDataDto
                 {
                     Id = Guid.Parse(request.UserData.Id),
@@ -40,8 +48,10 @@ namespace orders_service.Src.GrpcServices
                     EmailAddress = request.UserData.EmailAddress
                 };
 
+                // Delegación al repositorio.
                 var order = await _orderRepository.CreateOrderAsync(createItems, userData);
 
+                // Construcción de la respuesta gRPC.
                 return new OrderResponse
                 {
                     Id = order.Id.ToString(),
@@ -52,37 +62,38 @@ namespace orders_service.Src.GrpcServices
                     TrackingNumber = order.TrackingNumber ?? "",
                     DeliveryDate = order.DeliveryDate?.ToString("O") ?? "",
                     CancellationReason = order.CancellationReason ?? "",
-                    Items = { order.Items.Select(i => new OrderItem
+                    Items =
                     {
-                        ProductId = i.ProductId.ToString(),
-                        ProductName = i.ProductName,
-                        Quantity = i.Quantity,
-                        UnitPrice = (int)i.UnitPrice,
-                        SubTotal = (int)i.SubTotal
-                    }) }
+                        order.Items.Select(i => new OrderItem
+                        {
+                            ProductId = i.ProductId.ToString(),
+                            ProductName = i.ProductName,
+                            Quantity = i.Quantity,
+                            UnitPrice = (int)i.UnitPrice,
+                            SubTotal = (int)i.SubTotal
+                        })
+                    }
                 };
             }
             catch (Exception ex)
             {
+                // Envuelve cualquier error en una excepción RPC estándar.
                 throw new RpcException(new Status(StatusCode.Internal, $"Error creating order: {ex.Message}"));
             }
         }
 
+        // Endpoint para consultar el estado actual de un pedido.
+        // Utiliza el repositorio y devuelve un simple OrderStatusResponse.
         public override async Task<OrderStatusResponse> CheckOrderStatus(CheckOrderStatusRequest request, ServerCallContext context)
         {
             try
             {
-                // Implementacion final
-                // var customerId = _userHeaderExtractor.GetUserId(context);
-                // var result = await _orderRepository.CheckOrderStatusAsync(customerId, request.OrderId);
-                
-                // Para pruebas
-                var result = await _orderRepository.CheckOrderStatusAsync(Guid.Parse(request.CustomerId), Guid.Parse(request.OrderId));
+                // Nota: en la versión final se extraerá el userId del contexto gRPC.
+                var result = await _orderRepository.CheckOrderStatusAsync(
+                    Guid.Parse(request.CustomerId),
+                    Guid.Parse(request.OrderId));
 
-                return new OrderStatusResponse
-                {
-                    Status = result
-                };
+                return new OrderStatusResponse { Status = result };
             }
             catch (Exception ex)
             {
@@ -90,12 +101,16 @@ namespace orders_service.Src.GrpcServices
             }
         }
 
+        // Endpoint para actualizar el estado de un pedido.
+        // Se valida y aplica el nuevo estado mediante el repositorio.
         public override async Task<OrderResponse> UpdateOrderStatus(UpdateOrderStatusRequest request, ServerCallContext context)
         {
             try
             {
-                var updated = await _orderRepository.UpdateOrderStatusAsync(Guid.Parse(request.OrderId), request.Status);
+                var updated = await _orderRepository.UpdateOrderStatusAsync(
+                    Guid.Parse(request.OrderId), request.Status);
 
+                // Mapeo del DTO al mensaje gRPC de respuesta.
                 return new OrderResponse
                 {
                     Id = updated.Id.ToString(),
@@ -106,14 +121,17 @@ namespace orders_service.Src.GrpcServices
                     TrackingNumber = updated.TrackingNumber ?? "",
                     DeliveryDate = updated.DeliveryDate?.ToString("O") ?? "",
                     CancellationReason = updated.CancellationReason ?? "",
-                    Items = { updated.Items.Select(i => new OrderItem
+                    Items =
                     {
-                        ProductId = i.ProductId.ToString(),
-                        ProductName = i.ProductName,
-                        Quantity = i.Quantity,
-                        UnitPrice = (int)i.UnitPrice,
-                        SubTotal = (int)i.SubTotal
-                    }) }
+                        updated.Items.Select(i => new OrderItem
+                        {
+                            ProductId = i.ProductId.ToString(),
+                            ProductName = i.ProductName,
+                            Quantity = i.Quantity,
+                            UnitPrice = (int)i.UnitPrice,
+                            SubTotal = (int)i.SubTotal
+                        })
+                    }
                 };
             }
             catch (Exception ex)
@@ -122,6 +140,9 @@ namespace orders_service.Src.GrpcServices
             }
         }
 
+        // Endpoint para cancelar pedidos.
+        // Soporta lógica diferente según el rol del usuario (Admin / Client).
+        // Devuelve el pedido ya cancelado.
         public override async Task<OrderResponse> CancelOrder(CancelOrderRequest request, ServerCallContext context)
         {
             try
@@ -132,10 +153,7 @@ namespace orders_service.Src.GrpcServices
                     CancellationReason = request.RequestCancelOrder.CancellationReason
                 };
 
-                // Implementacion final
-                // var userData = _userHeaderExtractor.GetUserData(context);
-
-                // Para pruebas
+                // Nota: en la versión final se usará el extractor de encabezados.
                 var userData = new UserDataDto
                 {
                     Id = Guid.Parse(request.UserData.Id),
@@ -156,14 +174,17 @@ namespace orders_service.Src.GrpcServices
                     TrackingNumber = order.TrackingNumber ?? "",
                     DeliveryDate = order.DeliveryDate?.ToString("O") ?? "",
                     CancellationReason = order.CancellationReason ?? "",
-                    Items = { order.Items.Select(i => new OrderItem
+                    Items =
                     {
-                        ProductId = i.ProductId.ToString(),
-                        ProductName = i.ProductName,
-                        Quantity = i.Quantity,
-                        UnitPrice = (int)i.UnitPrice,
-                        SubTotal = (int)i.SubTotal
-                    }) }
+                        order.Items.Select(i => new OrderItem
+                        {
+                            ProductId = i.ProductId.ToString(),
+                            ProductName = i.ProductName,
+                            Quantity = i.Quantity,
+                            UnitPrice = (int)i.UnitPrice,
+                            SubTotal = (int)i.SubTotal
+                        })
+                    }
                 };
             }
             catch (Exception ex)
@@ -172,6 +193,8 @@ namespace orders_service.Src.GrpcServices
             }
         }
 
+        // Endpoint para obtener pedidos aplicando filtros.
+        // Mapea múltiples entidades OrderDto hacia OrderResponse para la respuesta gRPC.
         public override async Task<GetOrdersResponse> GetOrders(GetOrdersRequest request, ServerCallContext context)
         {
             try
@@ -188,10 +211,7 @@ namespace orders_service.Src.GrpcServices
                         : DateTime.Parse(request.QueryObject.FinalOrderDate)
                 };
 
-                // Implementacion final
-                // var userData = _userHeaderExtractor.GetUserData(context);
-
-                // Para pruebas
+                // Nota: la extracción de usuario desde headers se agregará en la versión final.
                 var userData = new UserDataDto
                 {
                     Id = Guid.Parse(request.UserData.Id),
@@ -202,26 +222,32 @@ namespace orders_service.Src.GrpcServices
 
                 var orders = await _orderRepository.GetOrdersAsync(query, userData);
 
+                // Construcción de la lista de respuestas gRPC.
                 var response = new GetOrdersResponse();
-                response.OrderDto.AddRange(orders.Select(o => new OrderResponse
-                {
-                    Id = o.Id.ToString(),
-                    OrderDate = o.OrderDate.ToString("O"),
-                    UserId = o.UserId.ToString(),
-                    Status = o.Status,
-                    TotalAmount = (int)o.TotalAmount,
-                    TrackingNumber = o.TrackingNumber ?? "",
-                    DeliveryDate = o.DeliveryDate?.ToString("O") ?? "",
-                    CancellationReason = o.CancellationReason ?? "",
-                    Items = { o.Items.Select(i => new OrderItem
+                response.OrderDto.AddRange(
+                    orders.Select(o => new OrderResponse
                     {
-                        ProductId = i.ProductId.ToString(),
-                        ProductName = i.ProductName,
-                        Quantity = i.Quantity,
-                        UnitPrice = (int)i.UnitPrice,
-                        SubTotal = (int)i.SubTotal
-                    }) }
-                }));
+                        Id = o.Id.ToString(),
+                        OrderDate = o.OrderDate.ToString("O"),
+                        UserId = o.UserId.ToString(),
+                        Status = o.Status,
+                        TotalAmount = (int)o.TotalAmount,
+                        TrackingNumber = o.TrackingNumber ?? "",
+                        DeliveryDate = o.DeliveryDate?.ToString("O") ?? "",
+                        CancellationReason = o.CancellationReason ?? "",
+                        Items =
+                        {
+                            o.Items.Select(i => new OrderItem
+                            {
+                                ProductId = i.ProductId.ToString(),
+                                ProductName = i.ProductName,
+                                Quantity = i.Quantity,
+                                UnitPrice = (int)i.UnitPrice,
+                                SubTotal = (int)i.SubTotal
+                            })
+                        }
+                    })
+                );
 
                 return response;
             }
