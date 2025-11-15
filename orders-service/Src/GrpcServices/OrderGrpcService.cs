@@ -38,15 +38,8 @@ namespace orders_service.Src.GrpcServices
                     Quantity = i.Quantity
                 }).ToList();
 
-                // Nota: la implementación final extraerá el usuario desde los headers.
-                // Actualmente se utiliza un objeto de prueba definido en el request.
-                var userData = new UserDataDto
-                {
-                    Id = Guid.Parse(request.UserData.Id),
-                    Name = request.UserData.Name,
-                    Role = request.UserData.Role,
-                    EmailAddress = request.UserData.EmailAddress
-                };
+                // Extraer los datos del usuario desde el header.
+                var userData = _userHeaderExtractor.GetUserData(context);
 
                 // Delegación al repositorio.
                 var order = await _orderRepository.CreateOrderAsync(createItems, userData);
@@ -88,10 +81,10 @@ namespace orders_service.Src.GrpcServices
         {
             try
             {
-                // Nota: en la versión final se extraerá el userId del contexto gRPC.
-                var result = await _orderRepository.CheckOrderStatusAsync(
-                    Guid.Parse(request.CustomerId),
-                    Guid.Parse(request.OrderId));
+                // Obtener el id del usuario desde el header.
+                var customerId = _userHeaderExtractor.GetUserId(context);
+
+                var result = await _orderRepository.CheckOrderStatusAsync(customerId, Guid.Parse(request.OrderId));
 
                 return new OrderStatusResponse { Status = result };
             }
@@ -153,14 +146,8 @@ namespace orders_service.Src.GrpcServices
                     CancellationReason = request.RequestCancelOrder.CancellationReason
                 };
 
-                // Nota: en la versión final se usará el extractor de encabezados.
-                var userData = new UserDataDto
-                {
-                    Id = Guid.Parse(request.UserData.Id),
-                    Name = request.UserData.Name,
-                    Role = request.UserData.Role,
-                    EmailAddress = request.UserData.EmailAddress
-                };
+                // Extraer los datos del usuario desde el header.
+                var userData = _userHeaderExtractor.GetUserData(context);
 
                 var order = await _orderRepository.CancelOrderAsync(requestCancelOrderDto, userData);
 
@@ -201,8 +188,8 @@ namespace orders_service.Src.GrpcServices
             {
                 var query = new Helpers.QueryObjectOrder
                 {
-                    OrderId = Guid.Parse(request.QueryObject.OrderId),
-                    CustomerId = Guid.Parse(request.QueryObject.CustomerId),
+                    OrderId = Guid.TryParse(request.QueryObject.CustomerId, out var cId) ? cId : Guid.Empty,
+                    CustomerId = Guid.TryParse(request.QueryObject.OrderId, out var oId) ? oId : Guid.Empty,
                     InitialOrderDate = string.IsNullOrEmpty(request.QueryObject.InitialOrderDate)
                         ? null
                         : DateTime.Parse(request.QueryObject.InitialOrderDate),
@@ -211,14 +198,8 @@ namespace orders_service.Src.GrpcServices
                         : DateTime.Parse(request.QueryObject.FinalOrderDate)
                 };
 
-                // Nota: la extracción de usuario desde headers se agregará en la versión final.
-                var userData = new UserDataDto
-                {
-                    Id = Guid.Parse(request.UserData.Id),
-                    Name = request.UserData.Name,
-                    Role = request.UserData.Role,
-                    EmailAddress = request.UserData.EmailAddress
-                };
+                // Extraer los datos del usuario desde el header.
+                var userData = _userHeaderExtractor.GetUserData(context);
 
                 var orders = await _orderRepository.GetOrdersAsync(query, userData);
 

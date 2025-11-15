@@ -54,7 +54,7 @@ namespace orders_service.Src.Helpers
         /// <item>No se encuentra el header requerido: <c>x-user-id</c>.</item>
         /// </list>
         /// </exception>
-        public string GetUserId(ServerCallContext context)
+        public Guid GetUserId(ServerCallContext context)
         {
             var headers = context.RequestHeaders;
 
@@ -65,7 +65,7 @@ namespace orders_service.Src.Helpers
                 throw new RpcException(new Status(StatusCode.Unauthenticated, "Missing user id"));
             }
 
-            return userId;
+            return Guid.Parse(userId);
         }
     }
 }

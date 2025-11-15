@@ -53,7 +53,7 @@ namespace ConsumerApi.Consumers
             {
                 Id = Guid.Empty,
                 Name = "System",
-                Role = "Admin",
+                Role = "ADMIN",
                 EmailAddress = "admin@gmail.com"
             };
 

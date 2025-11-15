@@ -1,5 +1,4 @@
 using Grpc.Net.Client;
-using ProductService;
 using Microsoft.EntityFrameworkCore;
 using orders_service.Src.Data;
 using orders_service.Src.DTOs;
@@ -10,6 +9,7 @@ using orders_service.Src.Models;
 using MassTransit;
 using Shared.OrderCreatedMessage;
 using orders_service.Src.Messages;
+using Product;
 
 namespace orders_service.Src.Repositories
 {
@@ -25,7 +25,7 @@ namespace orders_service.Src.Repositories
         /// <summary>
         /// Cliente gRPC del Product Service.
         /// </summary>
-        private readonly Product.ProductClient _productClient;
+        private readonly ProductService.ProductServiceClient _productClient;
         /// <summary>
         /// Servicio de envio de correos electrónicos.
         /// </summary>
@@ -40,12 +40,13 @@ namespace orders_service.Src.Repositories
         /// <param name="context">Contexto de la base de datos.</param>
         /// <param name="emailService">Servicio de envio de correos electrónicos.</param>
         /// <param name="publishEndpoint">Endpoint para publicación de eventos de RabbitMQ.</param>
-        public OrderRepository(AppDbContext context, IEmailService emailService, IPublishEndpoint publishEndpoint)
+        public OrderRepository(AppDbContext context, IEmailService emailService, IPublishEndpoint publishEndpoint,
+        ProductService.ProductServiceClient productServiceClient)
         {
             _context = context;
             var channel = GrpcChannel.ForAddress(Environment.GetEnvironmentVariable("PRODUCT_SERVICE_URL")
                 ?? throw new Exception("No se encontro la direccion del servicio de productos"));
-            _productClient = new Product.ProductClient(channel);
+            _productClient = productServiceClient;
             _emailService = emailService;
             _publishEndpoint = publishEndpoint;
         }
@@ -83,34 +84,27 @@ namespace orders_service.Src.Repositories
                 //Validacion: La cantidad del producto debe ser mayor a 0
                 if (itemDto.Quantity <= 0) throw new Exception("La cantidad debe ser mayor a 0");
 
-                // En espera: Se debe contar con el servicio de producto activo
-                // var response = _productClient.GetProductById(new GetProductRequest { Id = itemDto.ProductId });
+                // Llamada al servicio de producto para obtener los datos de los productos.
+                var response = _productClient.GetProductById( new GetProductByIdRequest { Id = itemDto.ProductId.ToString()});
 
-                // Implementacion para pruebas
-                var product = new
-                {
-                    Id = itemDto.ProductId,
-                    Name = "Product",
-                    Price = 12,
-                };
+                Console.WriteLine($"Product:{response.Product}");
+                //Validacion: El producto debe existir.
+                if (response.Product == null) throw new Exception($"El producto con la Id {itemDto.ProductId} no existe");
 
-                //Validacion: El producto debe existir
-                if (product == null) throw new Exception($"El producto con la Id {itemDto.ProductId} no existe");
+                //Validacion: El nombre no puede ser nulo o vacio.
+                if (string.IsNullOrEmpty(response.Product.Name)) throw new Exception("El nombre del producto no es valido");
 
-                //Validacion: El nombre no puede ser nulo o vacio
-                if (string.IsNullOrEmpty(product.Name)) throw new Exception("El nombre del producto no es valido");
-
-                //Validacion: El precio no puede ser menor o igual a 0
-                if (product.Price <= 0) throw new Exception("El precio del producto no es valido");
+                //Validacion: El precio no puede ser menor o igual a 0.
+                if (response.Product.Price <= 0) throw new Exception("El precio del producto no es valido");
 
                 var orderItem = new OrderItem
                 {
                     Id = Guid.NewGuid(),
                     ProductId = itemDto.ProductId,
-                    ProductName = product.Name,
+                    ProductName = response.Product.Name,
                     Quantity = itemDto.Quantity,
-                    UnitPrice = (int)product.Price,
-                    SubTotal = (int)product.Price * itemDto.Quantity
+                    UnitPrice = (int)response.Product.Price,
+                    SubTotal = (int)response.Product.Price * itemDto.Quantity
                 };
 
                 items.Add(orderItem);
@@ -320,7 +314,7 @@ namespace orders_service.Src.Repositories
         /// </exception>
         public async Task<OrderDto> CancelOrderAsync(RequestCancelOrderDto request, UserDataDto userData)
         {
-            if (userData.Role == "Admin")
+            if (userData.Role == "ADMIN")
             {
                 var order = await _context.Orders.FindAsync(request.OrderId);
 
@@ -343,28 +337,30 @@ namespace orders_service.Src.Repositories
                 // Por implementar: Llamar al serivicio de cliente para obtener los datos del usuario
                 // var user = _clientUser.getUser(order.UserId);
 
-                // En espera: mandar mensaje personalizado en caso de producto sin stock
+                // Mandar mensaje personalizado en caso de producto sin stock
+                if (request.FailedProducts != null)
+                {
+                    var response = _productClient.GetProducts(new GetProductsRequest { });
+                    if (response.Products == null) throw new Exception("No hay productos disponibles.");
 
-                // if (request.FailedProducts != null)
-                // {
-                //     var response = _productClient.GetProducts(new GetProductsRequest { ... });
-                //     var subject1 = $"Censudex: Producto sin stock - Recomendaciones para tu pedido";
-                //     var recommendedItems = string.Join("\n", response.Select(item =>
-                //         $"  - Producto: {item.ProductName}\n" +
-                //         $"    Precio unitario: ${item.UnitPrice}\n"
-                //     ));
-                //     var message1 =
-                //         $"Hola {user.Name},\n\n" +
-                //         $"Lamentamos informarte que los siguientes productos'{request.FailedProducts}' actualmente no cuenta con stock disponible.\n\n" +
-                //         "Sabemos lo importante que es para ti recibir tus productos sin demoras, por lo que te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
-                //         $"{recommendedItems}\n" +
-                //         "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
-                //         "El monto correspondiente será reembolsado automáticamente en las próximas horas.\n\n" +
-                //         "Gracias por tu comprensión y por confiar en nosotros.\n" +
-                //         "El equipo de Censudex.";
-                //     var isEmailSent1 = await _emailService.SendEmailAsync(subject1, user.EmailAddress, message1);
-                //     if (!isEmailSent1) Console.WriteLine("El email no fue enviado");
-                // }
+                    var subject1 = $"Censudex: Productos sin stock - Recomendaciones para tu pedido";
+                    var recommendedItems = string.Join("\n", response.Products.Select(item =>
+                        $"  - Producto: {item.Name}\n" +
+                        $"    Precio unitario: ${item.Price}\n"
+                    ));
+                    Console.WriteLine($"RecomendedItems:{recommendedItems}");
+                    // var message1 =
+                    //     // $"Hola {user.Name},\n\n" +
+                    //     $"Lamentamos informarte que los siguientes productos'{request.FailedProducts}' actualmente no cuenta con stock disponible.\n\n" +
+                    //     "Sabemos lo importante que es para ti recibir tus productos sin demoras, por lo que te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
+                    //     $"{recommendedItems}\n" +
+                    //     "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
+                    //     "El monto correspondiente será reembolsado automáticamente en las próximas horas.\n\n" +
+                    //     "Gracias por tu comprensión y por confiar en nosotros.\n" +
+                    //     "El equipo de Censudex.";
+                    // var isEmailSent1 = await _emailService.SendEmailAsync(subject1, user.EmailAddress, message1);
+                    // if (!isEmailSent1) Console.WriteLine("El email no fue enviado");
+                }
 
                 // En espera: Se notifica al cliente una confirmacion de la cancelacion de su pedido, con el motivo, y el proceso de reembolso.
                 // else {
@@ -384,7 +380,7 @@ namespace orders_service.Src.Repositories
                 // }
                 return order.ToDtoFromOrder();
             }
-            else if (userData.Role == "Client")
+            else if (userData.Role == "CLIENT")
             {
                 var order = _context.Orders.Where(o => o.UserId == userData.Id && o.Id == request.OrderId).ElementAt(0);
 
@@ -463,7 +459,7 @@ namespace orders_service.Src.Repositories
                 orders = orders.Where(o => o.OrderDate > queryObject.InitialOrderDate && o.OrderDate < queryObject.FinalOrderDate);
             }
 
-            if (userData.Role == "Admin")
+            if (userData.Role == "ADMIN")
             {
                 if (queryObject.CustomerId != Guid.Empty)
                 {
@@ -471,9 +467,9 @@ namespace orders_service.Src.Repositories
                 }
             }
 
-            if (userData.Role == "Client") orders = orders.Where(o => o.UserId == userData.Id);
+            if (userData.Role == "CLIENT") orders = orders.Where(o => o.UserId == userData.Id);
 
-            if (userData.Role != "Admin" && userData.Role != "Client")
+            if (userData.Role != "ADMIN" && userData.Role != "CLIENT")
             {
                 throw new Exception("Rol del usuario desconocido");
             }

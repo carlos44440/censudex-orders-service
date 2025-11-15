@@ -9,6 +9,7 @@ using orders_service.Src.Helpers;
 using MassTransit;
 using ConsumerApi.Consumers;
 using Shared.OrderCreatedMessage;
+using Product;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +25,10 @@ var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 4, 6)))
 );
+builder.Services.AddGrpcClient<ProductService.ProductServiceClient>(o =>
+{
+    o.Address = new Uri("http://localhost:50052"); // URL del Product Service
+});
 
 /// <summary>
 /// Registro de servicios internos: repositorio, servicio de correos y extractor de headers.
