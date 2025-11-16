@@ -152,14 +152,14 @@ Crea un archivo **.env** en la raíz del proyecto:
 CONNECTION_STRING=Server=localhost;Port=2000;Database=orders;User=root;Password=root;
 
 # Services
-CLIENT_SERVICE_URL=http://localhost:
-PRODUCT_SERVICE_URL=http://localhost:
+CLIENT_SERVICE_URL=https://localhost:7181
+PRODUCT_SERVICE_URL=http://localhost:50052
 INVENTORY_SERVICE_URL=http://localhost:5001
 
 # SendGrid
 SENDGRID_API_KEY=YourSendGridApiKey
-SENDER_EMAIL=YourSenderEmail
-SENDER_NAME=YourSenderName
+SENDER_EMAIL=carlos.arauco@alumnos.ucn.cl
+SENDER_NAME=Carlos
 
 # RabbitMQ
 RABBITMQ_HOST=localhost
