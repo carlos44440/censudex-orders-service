@@ -38,6 +38,9 @@
 
   <ItemGroup>
     <Protobuf Include="Protos/product.proto" GrpcServices="Client" />
+  </ItemGroup>  
+  <ItemGroup>
+    <Protobuf Include="Protos/clients.proto" GrpcServices="Client" />
   </ItemGroup>
   <ItemGroup>
     <Protobuf Include="Protos/order.proto" GrpcServices="Server" />

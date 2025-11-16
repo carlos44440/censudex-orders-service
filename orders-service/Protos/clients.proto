@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+
+option csharp_namespace = "ClientsService.Grpc";
+
+service ClientsGrpc {
+  rpc GetAllClients(GetClientsRequest) returns (ClientsListResponse);
+  rpc CreateClient (CreateClientRequest) returns (ClientResponse);
+  rpc GetClientById (GetClientByIdRequest) returns (ClientResponse);
+  rpc UpdateClient (UpdateClientRequest) returns (ClientResponse);
+  rpc DeactivateClient (DeactivateClientRequest) returns (ClientResponse);
+
+  // Auth Service helper
+  rpc GetClientByIdentifier (GetClientByIdentifierRequest) returns (ClientResponse);
+}
+
+message GetClientsRequest {
+  string username = 1;
+  string email = 2;
+  string fullName = 3;
+
+  // Boolean en gRPC no puede ser null → Usamos wrapper
+  google.protobuf.BoolValue isActive = 4;
+}
+
+message CreateClientRequest {
+  string fullName = 1;
+  string email = 2;
+  string username = 3;
+  string birthDate = 4;
+  string address = 5;
+  string phoneNumber = 6;
+  string password = 7;
+}
+
+message UpdateClientRequest {
+  string id = 1;
+  string fullName = 2;
+  string email = 3;
+  string username = 4;
+  string birthDate = 5;
+  string address = 6;
+  string phoneNumber = 7;
+  string password = 8;
+}
+
+message DeactivateClientRequest {
+  string id = 1;
+}
+
+message GetClientByIdentifierRequest {
+  string identifier = 1; // email OR username
+}
+
+message GetClientByIdRequest {
+  string id = 1;
+}
+
+message ClientResponse {
+  string id = 1;
+  string fullName = 2;
+  string email = 3;
+  string username = 4;
+  string birthDate = 5;
+  string address = 6;
+  string phoneNumber = 7;
+  bool isActive = 8;
+}
+
+message ClientsListResponse {
+  repeated ClientResponse clients = 1;
+}

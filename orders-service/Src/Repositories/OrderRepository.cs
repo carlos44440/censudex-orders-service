@@ -10,6 +10,7 @@ using MassTransit;
 using Shared.OrderCreatedMessage;
 using orders_service.Src.Messages;
 using Product;
+using ClientsService.Grpc;
 
 namespace orders_service.Src.Repositories
 {
@@ -25,7 +26,11 @@ namespace orders_service.Src.Repositories
         /// <summary>
         /// Cliente gRPC del Product Service.
         /// </summary>
-        private readonly ProductService.ProductServiceClient _productClient;
+        private readonly ProductService.ProductServiceClient _productGrpcClient;
+        /// <summary>
+        /// Cliente Grpc del Client Service.
+        /// </summary>
+        private readonly ClientsGrpc.ClientsGrpcClient _clientGrpcClient;
         /// <summary>
         /// Servicio de envio de correos electrónicos.
         /// </summary>
@@ -41,12 +46,13 @@ namespace orders_service.Src.Repositories
         /// <param name="emailService">Servicio de envio de correos electrónicos.</param>
         /// <param name="publishEndpoint">Endpoint para publicación de eventos de RabbitMQ.</param>
         public OrderRepository(AppDbContext context, IEmailService emailService, IPublishEndpoint publishEndpoint,
-        ProductService.ProductServiceClient productServiceClient)
+        ProductService.ProductServiceClient productServiceClient, ClientsGrpc.ClientsGrpcClient clientsGrpcClient)
         {
             _context = context;
             var channel = GrpcChannel.ForAddress(Environment.GetEnvironmentVariable("PRODUCT_SERVICE_URL")
                 ?? throw new Exception("No se encontro la direccion del servicio de productos"));
-            _productClient = productServiceClient;
+            _productGrpcClient = productServiceClient;
+            _clientGrpcClient = clientsGrpcClient;
             _emailService = emailService;
             _publishEndpoint = publishEndpoint;
         }
@@ -85,7 +91,7 @@ namespace orders_service.Src.Repositories
                 if (itemDto.Quantity <= 0) throw new Exception("La cantidad debe ser mayor a 0");
 
                 // Llamada al servicio de producto para obtener los datos de los productos.
-                var response = _productClient.GetProductById( new GetProductByIdRequest { Id = itemDto.ProductId.ToString()});
+                var response = _productGrpcClient.GetProductById( new GetProductByIdRequest { Id = itemDto.ProductId.ToString()});
 
                 Console.WriteLine($"Product:{response.Product}");
                 //Validacion: El producto debe existir.
@@ -248,52 +254,55 @@ namespace orders_service.Src.Repositories
             order.Status = status.ToLower();
             await _context.SaveChangesAsync();
 
-            // Por implementar: Llamar al serivicio de cliente para obtener los datos del usuario
-            // var user = _clientUser.getUser(order.UserId);
+            // Llamar al serivicio de cliente para obtener los datos del usuario
+            var customer = _clientGrpcClient.GetClientById( new GetClientByIdRequest { Id = order.UserId.ToString() });
 
-            // Por implementar: Si el status se actualiza a "en procesamiento" se notifica al cliente que el pedido esta siendo preparado.
-            // if (status.ToLower() == "en procesamiento")
-            //{
-            //   var subject = $"Censudex: Tu pedido #{order.Id} está siendo preparado";
-            //   var message =
-            //    $"Hola {user.Name},\n\n" +
-            //    $"Queremos informarte que tu pedido #{order.Id} ha pasado al estado 'En procesamiento'.\n" +
-            //    $"Nuestro equipo está preparando tus productos para su envío.\n\n" +
-            //    "Te notificaremos nuevamente cuando el pedido sea despachado.\n\n" +
-            //    "Gracias por tu paciencia y por confiar en nosotros.\n" +
-            //    "El equipo de Censudex.";
-            //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
-            //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
-            //}
+            // Validacion: El cliente debe estar registrado en el servicio de client.
+            if(customer == null) throw new Exception($"El cliente con id {order.UserId} no existe");
+
+            // Si el status se actualiza a "en procesamiento" se notifica al cliente que el pedido esta siendo preparado.
+            if (status.ToLower() == "en procesamiento")
+            {
+              var subject = $"Censudex: Tu pedido #{order.Id} está siendo preparado";
+              var message =
+               $"Hola {customer.FullName},\n\n" +
+               $"Queremos informarte que tu pedido #{order.Id} ha pasado al estado 'En procesamiento'.\n" +
+               $"Nuestro equipo está preparando tus productos para su envío.\n\n" +
+               "Te notificaremos nuevamente cuando el pedido sea despachado.\n\n" +
+               "Gracias por tu paciencia y por confiar en nosotros.\n" +
+               "El equipo de Censudex.";
+              var isEmailSent = await _emailService.SendEmailAsync(subject, customer.Email, message);
+              if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+            }
 
             // Por implementar: Si el status se actualiza a "enviado" se envia al cliente el numero de seguimiento y un enlace al transportista. 
-            // if (status.ToLower() == "enviado")
-            //{
-            //   var subject = $"Censudex: Tu pedido #{order.Id} ha sido enviado";
-            //   var message = 
-            // $"Hola {user.Name},\n\n" +
-            // $"Tu pedido #{order.Id} ha sido despachado y se encuentra en camino.\n\n" +
-            // $"Número de seguimiento: {order.TrackingNumber}\n\n" +
-            // "Gracias por tu preferencia y confianza.\n" +
-            // "El equipo de Censudex.";
-            //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
-            //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
-            //}
+            if (status.ToLower() == "enviado")
+            {
+              var subject = $"Censudex: Tu pedido #{order.Id} ha sido enviado";
+              var message = 
+                $"Hola {customer.FullName},\n\n" +
+                $"Tu pedido #{order.Id} ha sido despachado y se encuentra en camino.\n\n" +
+                $"Número de seguimiento: {order.TrackingNumber}\n\n" +
+                "Gracias por tu preferencia y confianza.\n" +
+                "El equipo de Censudex.";
+              var isEmailSent = await _emailService.SendEmailAsync(subject, customer.Email, message);
+              if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+            }
 
             // Por implementar: Si el status se actualiza a "entregado" se envia al cliente una notificacion de confirmacion final.
-            // if (status.ToLower() == "entregado")
-            //{
-            //   var subject = $"Censudex: Tu pedido #{order.Id} ha sido entregado";
-            //   var message =
-            // $"Hola {user.Name},\n\n" +
-            // $"Nos alegra informarte que tu pedido #{order.Id} ha sido entregado exitosamente.\n\n" +
-            // "Esperamos que estés satisfecho con tu compra.\n" +
-            // "Si tienes algún comentario o deseas evaluar tu experiencia, puedes hacerlo desde tu cuenta en nuestro portal.\n\n" +
-            // "Gracias por elegir Censudex.\n" +
-            // "El equipo de Censudex.";
-            //   var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
-            //   if (!isEmailSent) Console.WriteLine("El email no fue enviado");
-            //}
+            if (status.ToLower() == "entregado")
+            {
+              var subject = $"Censudex: Tu pedido #{order.Id} ha sido entregado";
+              var message =
+                $"Hola {customer.FullName},\n\n" +
+                $"Nos alegra informarte que tu pedido #{order.Id} ha sido entregado exitosamente.\n\n" +
+                "Esperamos que estés satisfecho con tu compra.\n" +
+                "Si tienes algún comentario o deseas evaluar tu experiencia, puedes hacerlo desde tu cuenta en nuestro portal.\n\n" +
+                "Gracias por elegir Censudex.\n" +
+                "El equipo de Censudex.";
+              var isEmailSent = await _emailService.SendEmailAsync(subject, customer.Email, message);
+              if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+            }
 
             return order.ToDtoFromOrder();
         }
@@ -335,12 +344,14 @@ namespace orders_service.Src.Repositories
                 await _context.SaveChangesAsync();
 
                 // Por implementar: Llamar al serivicio de cliente para obtener los datos del usuario
-                // var user = _clientUser.getUser(order.UserId);
+                var customer = _clientGrpcClient.GetClientById( new GetClientByIdRequest { Id = order.UserId.ToString()});
+
+                if (customer == null) throw new Exception($"El cliente con id {order.UserId} no existe");
 
                 // Mandar mensaje personalizado en caso de producto sin stock
                 if (request.FailedProducts != null)
                 {
-                    var response = _productClient.GetProducts(new GetProductsRequest { });
+                    var response = _productGrpcClient.GetProducts(new GetProductsRequest { });
                     if (response.Products == null) throw new Exception("No hay productos disponibles.");
 
                     var subject1 = $"Censudex: Productos sin stock - Recomendaciones para tu pedido";
@@ -349,35 +360,44 @@ namespace orders_service.Src.Repositories
                         $"    Precio unitario: ${item.Price}\n"
                     ));
                     Console.WriteLine($"RecomendedItems:{recommendedItems}");
-                    // var message1 =
-                    //     // $"Hola {user.Name},\n\n" +
-                    //     $"Lamentamos informarte que los siguientes productos'{request.FailedProducts}' actualmente no cuenta con stock disponible.\n\n" +
-                    //     "Sabemos lo importante que es para ti recibir tus productos sin demoras, por lo que te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
-                    //     $"{recommendedItems}\n" +
-                    //     "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
-                    //     "El monto correspondiente será reembolsado automáticamente en las próximas horas.\n\n" +
-                    //     "Gracias por tu comprensión y por confiar en nosotros.\n" +
-                    //     "El equipo de Censudex.";
-                    // var isEmailSent1 = await _emailService.SendEmailAsync(subject1, user.EmailAddress, message1);
-                    // if (!isEmailSent1) Console.WriteLine("El email no fue enviado");
+
+                    var failedProductsText = string.Join("\n", request.FailedProducts.Select(p =>
+                        $"  - Producto: {p.ProductName}\n" +
+                        $"    Cantidad solicitada: {p.RequestedQuantity}\n" +
+                        $"    Stock disponible: {p.AvailableStock}\n"
+                    ));
+
+                    var message1 =
+                        $"Hola {customer.FullName},\n\n" +
+                        "Te informamos que tu pedido #" + order.Id + " ha sido cancelado exitosamente.\n\n" +
+                        "Debido a que los siguientes productos actualmente no cuenta con stock disponible.\n\n" +
+                        $"{failedProductsText}\n\n" +
+                        "Comprendiendo lo importante que es para ti recibir tus productos sin demoras, te ofrecemos algunas alternativas similares que podrían interesarte:\n\n" +
+                        $"{recommendedItems}\n" +
+                        "Puedes revisar estas opciones y actualizar tu pedido desde tu cuenta en nuestro portal.\n\n" +
+                        "El monto correspondiente será reembolsado automáticamente en las próximas horas.\n\n" +
+                        "Gracias por tu comprensión y por confiar en nosotros.\n" +
+                        "El equipo de Censudex.";
+                    var isEmailSent1 = await _emailService.SendEmailAsync(subject1, customer.Email, message1);
+                    if (!isEmailSent1) Console.WriteLine("El email no fue enviado");
                 }
 
-                // En espera: Se notifica al cliente una confirmacion de la cancelacion de su pedido, con el motivo, y el proceso de reembolso.
-                // else {
-                // var subject = $"Censudex: Confirmacion de la cancelacion del pedido #{order.Id}";
-                // var message =
-                //     $"Hola {user.Name},\n\n" +
-                //     "Te informamos que tu pedido #" + order.Id + " ha sido cancelado exitosamente.\n\n" +
-                //     (string.IsNullOrEmpty(order.CancellationReason) ? "" : $"Motivo de cancelación: {order.CancellationReason}\n\n") +
-                //     "En caso de que hayas realizado un pago, el proceso de reembolso se iniciará en las próximas horas. " +
-                //     "Dependiendo del método de pago, puede demorar entre 3 a 7 días hábiles.\n\n" +
-                //     "Si tienes alguna duda o necesitas más información, puedes contactar a nuestro equipo de soporte " +
-                //     "respondiendo este correo o ingresando a tu cuenta en nuestro portal.\n\n" +
-                //     "Gracias por confiar en nosotros.\n" +
-                //     "El equipo de Censudex";
-                // var isEmailSent = await _emailService.SendEmailAsync(subject, user.Email, message);
-                // if (!isEmailSent) Console.WriteLine("El email no fue enviado");
-                // }
+                // Se notifica al cliente una confirmacion de la cancelacion de su pedido, con el motivo, y el proceso de reembolso.
+                else {
+                    var subject = $"Censudex: Confirmacion de la cancelacion del pedido #{order.Id}";
+                    var message =
+                        $"Hola {customer.FullName},\n\n" +
+                        "Te informamos que tu pedido #" + order.Id + " ha sido cancelado exitosamente.\n\n" +
+                        (string.IsNullOrEmpty(order.CancellationReason) ? "" : $"Motivo de cancelación: {order.CancellationReason}\n\n") +
+                        "En caso de que hayas realizado un pago, el proceso de reembolso se iniciará en las próximas horas. " +
+                        "Dependiendo del método de pago, puede demorar entre 3 a 7 días hábiles.\n\n" +
+                        "Si tienes alguna duda o necesitas más información, puedes contactar a nuestro equipo de soporte " +
+                        "respondiendo este correo o ingresando a tu cuenta en nuestro portal.\n\n" +
+                        "Gracias por confiar en nosotros.\n" +
+                        "El equipo de Censudex";
+                    var isEmailSent = await _emailService.SendEmailAsync(subject, customer.Email, message);
+                    if (!isEmailSent) Console.WriteLine("El email no fue enviado");
+                }
                 return order.ToDtoFromOrder();
             }
             else if (userData.Role == "CLIENT")

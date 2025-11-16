@@ -10,6 +10,7 @@ using MassTransit;
 using ConsumerApi.Consumers;
 using Shared.OrderCreatedMessage;
 using Product;
+using ClientsService.Grpc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,9 +26,22 @@ var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 4, 6)))
 );
+/// <summary>
+/// Configuracion para la coneccion con el servicio de productos.
+/// </summary>
 builder.Services.AddGrpcClient<ProductService.ProductServiceClient>(o =>
 {
-    o.Address = new Uri("http://localhost:50052"); // URL del Product Service
+    o.Address = new Uri(Environment.GetEnvironmentVariable("PRODUCT_SERVICE_URL") ?? 
+    throw new Exception("La direccion del servicio de productos no esta registrada")); // URL del Product Service
+});
+
+/// <summary>
+/// Configuracion para la coneccion con el servicio de clientes.
+/// </summary>
+builder.Services.AddGrpcClient<ClientsGrpc.ClientsGrpcClient>(o =>
+{
+    o.Address = new Uri(Environment.GetEnvironmentVariable("CLIENT_SERVICE_URL") ?? 
+    throw new Exception("La direccion del servicio de clientes no esta registrada")); // URL del Client Service
 });
 
 /// <summary>
