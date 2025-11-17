@@ -473,10 +473,15 @@ namespace orders_service.Src.Repositories
             }
             if (queryObject.InitialOrderDate != null && queryObject.FinalOrderDate != null)
             {
-                // Validacion: El fecha de inicio no puede ser mayor a la fecha final
-                if (queryObject.InitialOrderDate > queryObject.FinalOrderDate) throw new Exception("La fecha de inicio no puede ser mayor a la fecha final");
+                var startDate = queryObject.InitialOrderDate.Value;
 
-                orders = orders.Where(o => o.OrderDate > queryObject.InitialOrderDate && o.OrderDate < queryObject.FinalOrderDate);
+                // Para cubrir todo el día final: 23:59:59.9999...
+                var endDate = queryObject.FinalOrderDate.Value.Date.AddDays(1).AddTicks(-1);
+
+                if (startDate > endDate)
+                    throw new Exception("La fecha de inicio no puede ser mayor que la fecha final.");
+
+                orders = orders.Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate);
             }
 
             if (userData.Role == "ADMIN")

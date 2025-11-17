@@ -188,14 +188,22 @@ namespace orders_service.Src.GrpcServices
             {
                 var query = new Helpers.QueryObjectOrder
                 {
-                    OrderId = Guid.TryParse(request.QueryObject.CustomerId, out var cId) ? cId : Guid.Empty,
-                    CustomerId = Guid.TryParse(request.QueryObject.OrderId, out var oId) ? oId : Guid.Empty,
+                    OrderId = Guid.TryParse(request.QueryObject.OrderId, out var cId) ? cId : Guid.Empty,
+                    CustomerId = Guid.TryParse(request.QueryObject.CustomerId, out var oId) ? oId : Guid.Empty,
                     InitialOrderDate = string.IsNullOrEmpty(request.QueryObject.InitialOrderDate)
                         ? null
-                        : DateTime.Parse(request.QueryObject.InitialOrderDate),
+                        : DateTime.ParseExact(
+                            request.QueryObject.InitialOrderDate,
+                            "O",
+                            System.Globalization.CultureInfo.InvariantCulture
+                        ),
                     FinalOrderDate = string.IsNullOrEmpty(request.QueryObject.FinalOrderDate)
                         ? null
-                        : DateTime.Parse(request.QueryObject.FinalOrderDate)
+                        : DateTime.ParseExact(
+                            request.QueryObject.FinalOrderDate,
+                            "O",
+                            System.Globalization.CultureInfo.InvariantCulture
+                        )
                 };
 
                 // Extraer los datos del usuario desde el header.
